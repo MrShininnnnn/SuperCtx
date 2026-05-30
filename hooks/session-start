@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# SuperCtx discovery hook.
+#
+# Runs at SessionStart. If this project has a SuperCtx hub, tell the agent so it reads the
+# centralized cross-tool context. Silent (no output) when there is no hub — most projects.
+# Read-only: this never writes anything.
+
+set -euo pipefail
+
+if [[ -f ".ctx/SUPERCTX.md" || -f ".ctx/manifest.toml" ]]; then
+  cat <<'EOF'
+This project uses SuperCtx. Centralized cross-tool context is in `.ctx/SUPERCTX.md`
+(aggregated from CLAUDE.md, AGENTS.md, GEMINI.md, and other tool instruction files). Treat it as
+the source of truth for shared project context, and run `/superctx:status` to check for drift.
+EOF
+fi

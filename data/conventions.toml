@@ -1,0 +1,83 @@
+# SuperCtx conventions registry
+#
+# Maps well-known context-file PATHS to the tools that read them. Identity comes from the
+# path convention, NOT from file contents, and one path may serve many tools (many-to-many).
+#
+# Every entry cites an official `source` and a `verified` date so the mapping is auditable and
+# can be re-checked as conventions change. Do NOT add entries from memory — verify against the
+# tool's official documentation first.
+#
+# `kind`:
+#   "instruction-file" — a single Markdown instructions file. IN SCOPE for v0.1 sync.
+#   "folder"           — a tool directory (skills/config). Recorded for later; OUT OF SCOPE in v0.1.
+
+# ---------------------------------------------------------------------------
+# Instruction files (in scope for v0.1)
+# ---------------------------------------------------------------------------
+
+[[convention]]
+path     = "CLAUDE.md"
+kind     = "instruction-file"
+tools    = ["Claude Code"]
+source   = "https://code.claude.com/docs/en/claude-code/memory"
+verified = "2026-05-29"
+
+[[convention]]
+path     = "AGENTS.md"
+kind     = "instruction-file"
+tools    = ["OpenAI Codex", "Cursor", "GitHub Copilot", "Windsurf", "Aider", "Zed", "Jules", "Devin", "Gemini CLI (opt-in)"]
+source   = "https://agents.md/"
+verified = "2026-05-29"
+note     = "Linux Foundation / Agentic AI Foundation open standard; read by 25+ tools. Claude Code is NOT on the list (uses CLAUDE.md)."
+
+[[convention]]
+path     = "GEMINI.md"
+kind     = "instruction-file"
+tools    = ["Gemini CLI"]
+source   = "https://geminicli.com/docs/cli/gemini-md/"
+verified = "2026-05-29"
+note     = "Default filename, configurable via .gemini/settings.json context.fileName. Possibly also used by Google Antigravity per secondary sources (UNVERIFIED)."
+
+[[convention]]
+path     = ".github/copilot-instructions.md"
+kind     = "instruction-file"
+tools    = ["GitHub Copilot"]
+source   = "https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions"
+verified = "2026-05-29"
+
+# ---------------------------------------------------------------------------
+# Folders (recorded for later phases; OUT OF SCOPE for v0.1 sync)
+# ---------------------------------------------------------------------------
+
+[[convention]]
+path     = ".claude/"
+kind     = "folder"
+tools    = ["Claude Code"]
+source   = "https://code.claude.com/docs/en/plugins"
+verified = "2026-05-29"
+
+[[convention]]
+path     = ".gemini/"
+kind     = "folder"
+tools    = ["Gemini CLI"]
+source   = "https://geminicli.com/docs/"
+verified = "2026-05-29"
+
+[[convention]]
+path     = ".github/instructions/"
+kind     = "folder"
+tools    = ["GitHub Copilot"]
+source   = "https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions"
+verified = "2026-05-29"
+
+# OPEN VERIFICATION ITEM: Google Antigravity's folder convention.
+# Secondary sources indicate ".agents/" (and use of GEMINI.md); the ".agy" claim was NOT
+# confirmed against official docs (antigravity.google/docs was not machine-fetchable).
+# Also confirm the reported Gemini CLI -> Antigravity 2.0 migration impact before relying.
+[[convention]]
+path     = ".agents/"
+kind     = "folder"
+tools    = ["Google Antigravity"]
+source   = "https://antigravity.google/docs/home"
+verified = ""
+note     = "UNVERIFIED — confirm against official Antigravity docs (.agents vs .agy)."

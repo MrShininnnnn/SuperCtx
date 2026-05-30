@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SuperCtx: local-only, never commit
+.DS_Store
+.claude/
+third_party/

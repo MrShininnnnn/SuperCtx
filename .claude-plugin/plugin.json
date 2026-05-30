@@ -1,0 +1,20 @@
+{
+  "name": "superctx",
+  "description": "Cross-tool project context synchronization. Centralizes per-tool instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, ...) into one canonical .ctx/ hub and detects drift.",
+  "version": "0.1.0",
+  "author": {
+    "name": "ShiningLab"
+  },
+  "homepage": "https://github.com/ShiningLab/SuperCtx",
+  "repository": "https://github.com/ShiningLab/SuperCtx",
+  "license": "MIT",
+  "keywords": [
+    "context",
+    "sync",
+    "agents",
+    "claude",
+    "codex",
+    "gemini",
+    "drift"
+  ]
+}
