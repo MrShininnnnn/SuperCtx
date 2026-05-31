@@ -60,3 +60,21 @@ Before opening a PR:
 5. Confirm local-only files are not staged.
 
 For skill-related changes, keep the skill aligned with SuperCtx's core purpose: synchronizing project context across AI coding tools.
+
+## Release Checklist
+
+Before releasing a new version of SuperCtx:
+
+1. **Bump Version Surfaces**: Ensure the new version string matches exactly across:
+   - `pyproject.toml` (`version` field)
+   - `.claude-plugin/plugin.json` (`version` field)
+   - `.claude-plugin/marketplace.json` (`version` field inside `plugins`)
+   - `scripts/superctx/__init__.py` (`__version__` constant)
+2. **Update Changelog**: Document the release date and all added, changed, deprecated, removed, fixed, or security-patched features in `CHANGELOG.md`.
+3. **Verify Code Quality**:
+   - Run the full test suite: `python -m pytest tests/ -v`
+   - Run the status CLI diagnostics and check path sanitization: `python -m superctx status`
+4. **Clean Workspace**: Confirm that no local-only files (e.g. `.claude/`, `.codex/`, `.agy/`, `docs/`) are staged or committed.
+5. **Release & Test**:
+   - Create a corresponding git tag and push to GitHub.
+   - Run `/plugin update superctx` and verify the active version is reported correctly.

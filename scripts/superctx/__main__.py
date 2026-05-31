@@ -44,6 +44,39 @@ def _cmd_sync(project_dir: Path) -> int:
 
 
 def _cmd_status(project_dir: Path) -> int:
+    diag = status_cmd.diagnostics(project_dir)
+    print("SuperCtx diagnostics:")
+    print(f"  version: {diag['version']}")
+    print(f"  plugin root: {diag['plugin_root']}")
+    print(f"  registry: {diag['registry']}")
+
+    yes_no = lambda b: "yes" if b else "no"
+    print(f"  supports .claude/CLAUDE.md: {yes_no(diag['supports_claude_md'])}")
+    print(f"  supports .codex/AGENTS.md: {yes_no(diag['supports_codex_agents'])}")
+    print(f"  project has .claude/CLAUDE.md: {yes_no(diag['project_has_claude_md'])}")
+    print(f"  project has .codex/AGENTS.md: {yes_no(diag['project_has_codex_agents'])}")
+    print()
+
+    if diag["stale_install"]:
+        stale_convs = []
+        if diag["project_has_claude_md"] and not diag["supports_claude_md"]:
+            stale_convs.append("`.claude/CLAUDE.md`")
+        if diag["project_has_codex_agents"] and not diag["supports_codex_agents"]:
+            stale_convs.append("`.codex/AGENTS.md`")
+        convs_str = " and ".join(stale_convs)
+        support_it_them = "them" if len(stale_convs) > 1 else "it"
+        print(f"WARNING: Stale installation detected! The project uses {convs_str} but the active plugin registry does not support {support_it_them}.")
+        print("To update to the latest version, run:")
+        print("  /plugin marketplace update superctx")
+        print("  /plugin update superctx")
+        print("  /reload-plugins")
+        print()
+        print("If updating does not resolve the issue, reinstall the plugin:")
+        print("  /plugin uninstall superctx")
+        print("  /plugin install superctx@superctx")
+        print("  /reload-plugins")
+        print()
+
     rows = status_cmd.run(project_dir)
     if not rows:
         print("SuperCtx: no tracked files. Run /superctx:setup first.")

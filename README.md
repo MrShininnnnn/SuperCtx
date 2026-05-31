@@ -84,6 +84,26 @@ After marketplace acceptance, the intended install path is:
 
 Until then, use the GitHub installation path above.
 
+## Updating SuperCtx
+
+To update SuperCtx to the latest version, run the following commands inside Claude Code:
+
+```text
+/plugin marketplace update superctx
+/plugin update superctx
+/reload-plugins
+```
+
+If updating does not resolve issues or if you suspect a cached or stale version is running, uninstall and reinstall the plugin to force-clear the local cache:
+
+```text
+/plugin uninstall superctx
+/plugin install superctx@superctx
+/reload-plugins
+```
+
+As a last resort if plugin caches persist, you can manually clear the Claude plugin cache directories under your user home profile.
+
 ## Quick Start
 
 Inside Claude Code:
