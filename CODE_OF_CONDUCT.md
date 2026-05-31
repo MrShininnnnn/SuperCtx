@@ -34,7 +34,7 @@ This Code of Conduct applies within all project spaces and when an individual is
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainer privately. Do not use public issues for Code of Conduct reports.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainer by email at `mrshininnnnn@gmail.com`. Do not use public issues for Code of Conduct reports.
 
 All complaints will be reviewed and investigated promptly and fairly. Maintainers are obligated to respect the privacy and security of the reporter of any incident.
 

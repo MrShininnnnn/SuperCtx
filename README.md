@@ -58,7 +58,7 @@ From inside Claude Code, add this repository as a plugin marketplace and install
 /plugin install superctx@superctx
 ```
 
-Claude Code marketplace installs copy plugins into Claude's local plugin cache. After installing or updating the plugin, restart Claude Code if the new skills do not appear immediately.
+Claude Code copies marketplace plugins into Claude's local plugin cache. After installing or updating the plugin, restart Claude Code if the new skills do not appear immediately.
 
 ### Load the plugin in Claude Code
 
@@ -141,7 +141,7 @@ The current implementation includes:
 - a deterministic Python sync engine using the standard library
 - snapshot tests for generated demo project files
 - CI for the Python test suite
-- a Claude Code plugin manifest and GitHub marketplace catalog
+- a Claude Code plugin manifest and marketplace catalog installable from GitHub
 
 ## What SuperCtx Is
 

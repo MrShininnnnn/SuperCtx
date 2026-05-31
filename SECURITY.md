@@ -19,7 +19,7 @@ Use GitHub's private vulnerability reporting flow if it is available for this re
 https://github.com/MrShininnnnn/SuperCtx/security/advisories/new
 ```
 
-If private reporting is unavailable, contact the maintainer privately before sharing exploit details in public.
+If private reporting is unavailable, email the maintainer at `mrshininnnnn@gmail.com` before sharing exploit details in public.
 
 Please include:
 
