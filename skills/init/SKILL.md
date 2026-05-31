@@ -1,5 +1,5 @@
 ---
-name: superctx-init
+name: init
 description: Use when setting up SuperCtx in a project for the first time, or when the user asks to create the .ctx hub, start centralizing context, or "set up superctx". Also use when no .ctx/ directory exists yet but the user wants cross-tool context management.
 ---
 

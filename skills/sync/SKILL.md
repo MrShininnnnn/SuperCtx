@@ -1,5 +1,5 @@
 ---
-name: superctx-sync
+name: sync
 description: Use when the user wants to centralize, refresh, or update the .ctx hub, or after editing CLAUDE.md / AGENTS.md / GEMINI.md and wanting those changes pulled into .ctx. Also use when /superctx:status reports drift.
 ---
 
