@@ -65,7 +65,7 @@ Claude Code copies marketplace plugins into Claude's local plugin cache. After i
 After installation, the SuperCtx skills are available as slash commands:
 
 ```text
-/superctx:setup
+/superctx:init
 /superctx:sync
 /superctx:status
 ```
@@ -109,14 +109,14 @@ As a last resort if plugin caches persist, you can manually clear the Claude plu
 Inside Claude Code:
 
 ```text
-/superctx:setup
+/superctx:init
 /superctx:sync
 /superctx:status
 ```
 
 The workflow:
 
-1. `/superctx:setup` scans the project for known tool instruction files and creates `.ctx/` with a manifest.
+1. `/superctx:init` scans the project for known tool instruction files and creates `.ctx/` with a manifest.
 2. `/superctx:sync` pulls tracked tool files into `.ctx/SUPERCTX.md`.
 3. `/superctx:status` reports whether tracked files are synced, drifted, missing, or untracked.
 
@@ -129,6 +129,24 @@ untracked  GEMINI.md
 ```
 
 Run `/superctx:sync` any time a tool instruction file changes.
+
+## Command Discovery and Namespace Safety
+
+SuperCtx commands are registered under the `superctx:` namespace to avoid colliding with Claude Code built-in slash commands such as `/init`, `/status`, and `/sync`.
+
+After installing or reloading the plugin (`/reload-plugins`), you can verify command discovery:
+
+**Type `/superctx` in Claude Code** — the command palette should show only:
+
+```text
+/superctx:init
+/superctx:sync
+/superctx:status
+```
+
+**Type `/status`** — only the Claude Code built-in status command should appear. SuperCtx does not register an unprefixed `/status` command.
+
+**Run `/superctx:status`** — SuperCtx reports diagnostics plus tracked files and whether they are synced, drifted, missing, or untracked.
 
 ## CLI Usage
 
