@@ -4,4 +4,4 @@ The agent-facing skills (skills/init, skills/status, skills/sync) wrap this pack
 `python3 -m superctx <init|sync|status>`.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
