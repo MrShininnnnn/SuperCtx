@@ -1,0 +1,31 @@
+{
+  "name": "superctx",
+  "owner": {
+    "name": "ShiningLab"
+  },
+  "description": "All the context, in one place for Claude Code, Codex, Gemini, and AI coding tools.",
+  "plugins": [
+    {
+      "name": "superctx",
+      "source": "./",
+      "description": "All the context, in one place for Claude Code, Codex, Gemini, and AI coding tools.",
+      "version": "0.1.0",
+      "author": {
+        "name": "ShiningLab"
+      },
+      "homepage": "https://github.com/MrShininnnnn/SuperCtx",
+      "repository": "https://github.com/MrShininnnnn/SuperCtx",
+      "license": "MIT",
+      "keywords": [
+        "context",
+        "sync",
+        "agents",
+        "claude",
+        "codex",
+        "gemini",
+        "antigravity",
+        "drift"
+      ]
+    }
+  ]
+}
