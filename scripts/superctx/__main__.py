@@ -46,7 +46,7 @@ def _cmd_sync(project_dir: Path) -> int:
 def _cmd_status(project_dir: Path) -> int:
     rows = status_cmd.run(project_dir)
     if not rows:
-        print("SuperCtx: no tracked files. Run /superctx:init first.")
+        print("SuperCtx: no tracked files. Run /superctx:setup first.")
         return 0
     print("SuperCtx status:")
     for row in rows:
