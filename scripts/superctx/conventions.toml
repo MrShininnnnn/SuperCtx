@@ -3,9 +3,10 @@
 # Maps well-known context-file PATHS to the tools that read them. Identity comes from the
 # path convention, NOT from file contents, and one path may serve many tools (many-to-many).
 #
-# Every entry cites an official `source` and a `verified` date so the mapping is auditable and
-# can be re-checked as conventions change. Do NOT add entries from memory — verify against the
-# tool's official documentation first.
+# Every upstream tool convention cites an official `source` and a `verified` date so the mapping
+# is auditable and can be re-checked as conventions change. SuperCtx-supported local variants must
+# cite the issue or PR that introduced the variant and must state that they are SuperCtx import
+# paths, not upstream tool conventions.
 #
 # `kind`:
 #   "instruction-file" — a single Markdown instructions file. IN SCOPE for v0.1 sync.
@@ -45,6 +46,21 @@ tools    = ["GitHub Copilot"]
 source   = "https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions"
 verified = "2026-05-29"
 
+[[convention]]
+path     = ".claude/CLAUDE.md"
+kind     = "instruction-file"
+tools    = ["Claude Code"]
+source   = "https://code.claude.com/docs/en/claude-code/memory"
+verified = "2026-05-31"
+
+[[convention]]
+path     = ".codex/AGENTS.md"
+kind     = "instruction-file"
+tools    = ["OpenAI Codex"]
+source   = "https://github.com/MrShininnnnn/SuperCtx/issues/14"
+verified = "2026-05-31"
+note     = "SuperCtx-supported project-local import path for Codex instructions; not an upstream AGENTS.md standard path."
+
 # ---------------------------------------------------------------------------
 # Folders (recorded for later phases; OUT OF SCOPE for v0.1 sync)
 # ---------------------------------------------------------------------------
@@ -71,8 +87,9 @@ source   = "https://docs.github.com/en/copilot/how-tos/configure-custom-instruct
 verified = "2026-05-29"
 
 # OPEN VERIFICATION ITEM: Google Antigravity's folder convention.
-# Secondary sources indicate ".agents/" (and use of GEMINI.md); the ".agy" claim was NOT
-# confirmed against official docs (antigravity.google/docs was not machine-fetchable).
+# Secondary sources indicate ".agents/" (and use of GEMINI.md); the ".agy" and
+# ".agy/ANTIGRAVITY.md" claims were NOT confirmed against official docs
+# (antigravity.google/docs was not machine-fetchable).
 # Also confirm the reported Gemini CLI -> Antigravity 2.0 migration impact before relying.
 [[convention]]
 path     = ".agents/"
