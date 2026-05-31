@@ -35,12 +35,12 @@ def test_demo_project_generates_expected_manifest_and_hub(tmp_path):
         {"path": "AGENTS.md", "state": "synced"},
         {"path": "GEMINI.md", "state": "synced"},
     ]
-    assert core.manifest_path(project).read_text(encoding="utf-8") == (
-        SNAPSHOTS / "manifest.toml"
-    ).read_text(encoding="utf-8")
-    assert core.hub_path(project).read_text(encoding="utf-8") == (
-        SNAPSHOTS / "SUPERCTX.md"
-    ).read_text(encoding="utf-8")
+    assert core.normalize(core.manifest_path(project).read_text(encoding="utf-8")) == (
+        core.normalize((SNAPSHOTS / "manifest.toml").read_text(encoding="utf-8"))
+    )
+    assert core.normalize(core.hub_path(project).read_text(encoding="utf-8")) == (
+        core.normalize((SNAPSHOTS / "SUPERCTX.md").read_text(encoding="utf-8"))
+    )
 
 
 def test_demo_project_cli_round_trip(tmp_path):
@@ -85,10 +85,9 @@ def test_generated_sources_are_ignored_inside_ctx(tmp_path):
     init_cmd.run(project)
     sync_cmd.run(project)
 
-    assert (core.ctx_dir(project) / ".gitignore").read_text(encoding="utf-8") == (
-        "# Raw per-tool snapshots are a local drift-detection cache.\n"
-        "sources/\n"
-    )
+    assert core.normalize(
+        (core.ctx_dir(project) / ".gitignore").read_text(encoding="utf-8")
+    ) == "# Raw per-tool snapshots are a local drift-detection cache.\nsources/\n"
     assert (core.sources_dir(project) / "CLAUDE.md").is_file()
     assert (core.sources_dir(project) / "AGENTS.md").is_file()
     assert (core.sources_dir(project) / "GEMINI.md").is_file()

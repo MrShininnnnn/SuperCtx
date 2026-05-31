@@ -26,3 +26,6 @@ package-dir = { "" = "scripts" }
 
 [tool.setuptools.packages.find]
 where = ["scripts"]
+
+[tool.setuptools.package-data]
+superctx = ["conventions.toml"]

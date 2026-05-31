@@ -1,6 +1,6 @@
 """Load the cited conventions registry and match it against a project's files.
 
-Identity is by PATH convention (never inferred from file contents). See data/conventions.toml.
+Identity is by PATH convention (never inferred from file contents). See conventions.toml.
 """
 
 from __future__ import annotations
@@ -10,8 +10,7 @@ from pathlib import Path
 
 
 def registry_path() -> Path:
-    # scripts/superctx/registry.py -> parents[2] is the plugin root.
-    return Path(__file__).resolve().parents[2] / "data" / "conventions.toml"
+    return Path(__file__).with_name("conventions.toml")
 
 
 def load_conventions(path: Path | None = None) -> list[dict]:
