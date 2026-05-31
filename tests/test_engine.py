@@ -93,6 +93,7 @@ def test_init_detects_hidden_instruction_files(tmp_path):
     assert "## From: AGENTS.md" in hub_content
     assert "root agents" in hub_content
 
+
 def test_init_is_idempotent(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "x\n"})
     init_cmd.run(tmp_path)
