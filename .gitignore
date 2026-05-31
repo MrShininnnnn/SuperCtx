@@ -220,5 +220,6 @@ __marimo__/
 # SuperCtx: local-only, never commit
 .DS_Store
 .claude/
+.codex/
 third_party/
 docs/
