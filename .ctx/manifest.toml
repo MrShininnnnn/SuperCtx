@@ -1,0 +1,7 @@
+[project]
+name = "SuperCtx"
+hub = ".ctx/SUPERCTX.md"
+
+[[files]]
+path = "AGENTS.md"
+tools = ["OpenAI Codex", "Cursor", "GitHub Copilot", "Windsurf", "Aider", "Zed", "Jules", "Devin", "Gemini CLI (opt-in)"]

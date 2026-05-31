@@ -1,8 +1,9 @@
 """Unit tests for the SuperCtx engine (init / sync / status) using temp project dirs."""
 
+from importlib import resources
 from pathlib import Path
 
-from superctx import core, init as init_cmd, status as status_cmd, sync as sync_cmd
+from superctx import core, init as init_cmd, registry, status as status_cmd, sync as sync_cmd
 
 
 def make_repo(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -11,6 +12,11 @@ def make_repo(tmp_path: Path, files: dict[str, str]) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
     return tmp_path
+
+
+def test_conventions_registry_is_packaged_with_module():
+    assert (resources.files("superctx") / "conventions.toml").is_file()
+    assert registry.load_conventions()[0]["path"] == "CLAUDE.md"
 
 
 # --- init -------------------------------------------------------------------

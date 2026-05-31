@@ -45,9 +45,44 @@ GEMINI.md  ─┘
 
 `SUPERCTX.md` is a structured aggregation of all your tool instruction files in one place, with clear provenance for each source. Your original tool files are never modified.
 
+## Quick Start
+
+SuperCtx requires Python 3.11 or newer.
+
+From a fresh clone:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .[test]
+python -m pytest tests/ -v
+```
+
+Run SuperCtx in a project that already has one or more tool instruction files such as `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`:
+
+```bash
+superctx init
+superctx sync
+superctx status
+```
+
+The same commands can be run without the console script:
+
+```bash
+python -m superctx init
+python -m superctx sync
+python -m superctx status
+```
+
 ## Basic Workflow
 
 **1. Initialize the hub** (run once per project):
+
+```bash
+superctx init
+```
+
+Or, inside Claude Code as a plugin skill:
 
 ```text
 /superctx:init
@@ -57,6 +92,12 @@ SuperCtx scans the project for known tool instruction files and creates `.ctx/` 
 
 **2. Centralize the context:**
 
+```bash
+superctx sync
+```
+
+Or:
+
 ```text
 /superctx:sync
 ```
@@ -64,6 +105,12 @@ SuperCtx scans the project for known tool instruction files and creates `.ctx/` 
 Pulls the tracked tool files into `.ctx/SUPERCTX.md`.
 
 **3. Check for drift:**
+
+```bash
+superctx status
+```
+
+Or:
 
 ```text
 /superctx:status
@@ -77,7 +124,7 @@ drifted    AGENTS.md
 untracked  GEMINI.md
 ```
 
-Run `/superctx:sync` any time a tool file changes to keep the hub current.
+Run `superctx sync` or `/superctx:sync` any time a tool file changes to keep the hub current.
 
 ## Current Status
 
