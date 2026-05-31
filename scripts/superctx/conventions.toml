@@ -45,6 +45,29 @@ tools    = ["GitHub Copilot"]
 source   = "https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions"
 verified = "2026-05-29"
 
+[[convention]]
+path     = ".claude/CLAUDE.md"
+kind     = "instruction-file"
+tools    = ["Claude Code"]
+source   = "https://code.claude.com/docs/en/claude-code/memory"
+verified = "2026-05-31"
+
+[[convention]]
+path     = ".codex/AGENTS.md"
+kind     = "instruction-file"
+tools    = ["OpenAI Codex", "Cursor", "GitHub Copilot", "Windsurf", "Aider", "Zed", "Jules", "Devin", "Gemini CLI (opt-in)"]
+source   = "https://agents.md/"
+verified = "2026-05-31"
+note     = "SuperCtx-supported local variant."
+
+[[convention]]
+path     = ".agy/ANTIGRAVITY.md"
+kind     = "instruction-file"
+tools    = ["Google Antigravity"]
+source   = "https://antigravity.google/docs/home"
+verified = ""
+note     = "EXPERIMENTAL/UNVERIFIED — confirm against official Antigravity docs."
+
 # ---------------------------------------------------------------------------
 # Folders (recorded for later phases; OUT OF SCOPE for v0.1 sync)
 # ---------------------------------------------------------------------------

@@ -44,6 +44,52 @@ def test_init_ignores_unrelated_files(tmp_path):
     assert result["detected"] == ["CLAUDE.md"]
 
 
+def test_init_detects_hidden_instruction_files(tmp_path):
+    make_repo(tmp_path, {
+        ".claude/CLAUDE.md": "claude hidden\n",
+        ".codex/AGENTS.md": "codex hidden\n",
+        ".agy/ANTIGRAVITY.md": "agy hidden\n",
+        "AGENTS.md": "root agents\n"
+    })
+    result = init_cmd.run(tmp_path)
+    assert result["created"] is True
+    assert set(result["detected"]) == {
+        ".claude/CLAUDE.md",
+        ".codex/AGENTS.md",
+        ".agy/ANTIGRAVITY.md",
+        "AGENTS.md"
+    }
+
+    # Run sync to centralize the detected hidden files
+    sync_result = sync_cmd.run(tmp_path)
+    assert set(sync_result["centralized"]) == {
+        ".claude/CLAUDE.md",
+        ".codex/AGENTS.md",
+        ".agy/ANTIGRAVITY.md",
+        "AGENTS.md"
+    }
+    assert sync_result["missing"] == []
+
+    # Verify status reports them as synced
+    status_rows = status_cmd.run(tmp_path)
+    assert len(status_rows) == 4
+    for row in status_rows:
+        assert row["state"] == "synced"
+
+    # Verify the generated hub file includes proper provenance headers and contents
+    hub_content = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert "## From: .claude/CLAUDE.md" in hub_content
+    assert "claude hidden" in hub_content
+    assert "## From: .codex/AGENTS.md" in hub_content
+    assert "codex hidden" in hub_content
+    assert "## From: .agy/ANTIGRAVITY.md" in hub_content
+    assert "agy hidden" in hub_content
+    assert "## From: AGENTS.md" in hub_content
+    assert "root agents" in hub_content
+
+
+
+
 def test_init_is_idempotent(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "x\n"})
     init_cmd.run(tmp_path)
