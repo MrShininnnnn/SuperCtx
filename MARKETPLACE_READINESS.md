@@ -26,7 +26,7 @@ SuperCtx has a clearer public repository experience and a documented GitHub inst
 - README includes the quick-start workflow:
 
 ```text
-/superctx:init
+/superctx:setup
 /superctx:sync
 /superctx:status
 ```
@@ -51,7 +51,7 @@ SuperCtx has a clearer public repository experience and a documented GitHub inst
 - [ ] Fresh clone can install the Python package in a clean environment.
 - [ ] Fresh Claude Code environment can run `/plugin marketplace add MrShininnnnn/SuperCtx`.
 - [ ] Fresh Claude Code environment can run `/plugin install superctx@superctx`.
-- [ ] `/superctx:init` runs in a demo project.
+- [ ] `/superctx:setup` runs in a demo project.
 - [ ] `/superctx:sync` generates `.ctx/SUPERCTX.md`.
 - [ ] `/superctx:status` reports synced or drifted files correctly.
 - [ ] README install and usage instructions match the verified commands.

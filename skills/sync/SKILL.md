@@ -24,4 +24,4 @@ provenance header).
 - Remind that `.ctx/SUPERCTX.md` is **generated** — to change it, edit the underlying tool files
   and re-run sync, don't hand-edit the hub.
 
-If the user has no `.ctx/` yet, run `/superctx:init` first.
+If the user has no `.ctx/` yet, run `/superctx:setup` first.
