@@ -65,7 +65,7 @@ Claude Code copies marketplace plugins into Claude's local plugin cache. After i
 After installation, the SuperCtx skills are available as slash commands:
 
 ```text
-/superctx:init
+/superctx:setup
 /superctx:sync
 /superctx:status
 ```
@@ -89,14 +89,14 @@ Until then, use the GitHub installation path above.
 Inside Claude Code:
 
 ```text
-/superctx:init
+/superctx:setup
 /superctx:sync
 /superctx:status
 ```
 
 The workflow:
 
-1. `/superctx:init` scans the project for known tool instruction files and creates `.ctx/` with a manifest.
+1. `/superctx:setup` scans the project for known tool instruction files and creates `.ctx/` with a manifest.
 2. `/superctx:sync` pulls tracked tool files into `.ctx/SUPERCTX.md`.
 3. `/superctx:status` reports whether tracked files are synced, drifted, missing, or untracked.
 
