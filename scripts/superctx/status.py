@@ -134,8 +134,28 @@ def run(project_dir: Path) -> list[dict]:
             state = "drifted"
         results.append({"path": rel, "state": state})
 
-    for conv in registry.detect(project_dir):
-        if conv["path"] not in tracked:
-            results.append({"path": conv["path"], "state": "untracked"})
+    # Untracked verified files
+    discovery = registry.detect_all(project_dir)
+    for c in discovery["verified_instruction_file"]:
+        if c["path"] not in tracked:
+            results.append({"path": c["path"], "state": "untracked"})
+
+    # Untracked folder and local candidates
+    candidate_keys = [
+        "supported_folder_candidate",
+        "legacy_or_uncertain_folder_candidate",
+        "unverified_local_candidate",
+    ]
+
+    for key in candidate_keys:
+        for cand in discovery[key]:
+            if cand["path"] not in tracked:
+                results.append({
+                    "path": cand["path"],
+                    "state": "untracked_candidate",
+                    "category": key,
+                    "label": cand["label"],
+                    "note": cand["note"],
+                })
 
     return results

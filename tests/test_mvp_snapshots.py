@@ -72,7 +72,7 @@ def test_demo_project_cli_round_trip(tmp_path):
         capture_output=True,
     )
 
-    assert "created" in init_result.stdout
+    assert "initialized" in init_result.stdout
     assert "+ centralized CLAUDE.md" in sync_result.stdout
     assert "synced     CLAUDE.md" in status_result.stdout
     assert "synced     AGENTS.md" in status_result.stdout

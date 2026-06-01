@@ -26,7 +26,8 @@ def run(project_dir: Path) -> dict:
     if cdir.exists():
         return {"created": False, "reason": "exists", "ctx_dir": str(cdir), "detected": []}
 
-    detected = registry.detect(project_dir)
+    discovery = registry.detect_all(project_dir)
+    verified = discovery["verified_instruction_file"]
     core.sources_dir(project_dir).mkdir(parents=True, exist_ok=True)
 
     manifest = {
@@ -34,10 +35,15 @@ def run(project_dir: Path) -> dict:
             "name": project_dir.resolve().name,
             "hub": f"{core.CTX_DIRNAME}/{core.HUB_NAME}",
         },
-        "files": [{"path": c["path"], "tools": c.get("tools", [])} for c in detected],
+        "files": [{"path": c["path"], "tools": c.get("tools", [])} for c in verified],
     }
     core.manifest_path(project_dir).write_text(core.dump_manifest(manifest), encoding="utf-8")
     core.hub_path(project_dir).write_text(_HUB_PLACEHOLDER, encoding="utf-8")
     (cdir / ".gitignore").write_text(_GITIGNORE_BODY, encoding="utf-8")
 
-    return {"created": True, "ctx_dir": str(cdir), "detected": [c["path"] for c in detected]}
+    return {
+        "created": True,
+        "ctx_dir": str(cdir),
+        "detected": [c["path"] for c in verified],
+        "discovery": discovery,
+    }
