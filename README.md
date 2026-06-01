@@ -72,14 +72,13 @@ After installation, the SuperCtx skills are available as slash commands:
 
 Run those commands from a repository that has one or more context files such as `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`.
 
-### Coming Soon: Claude Plugin Marketplace
+### Coming Soon: Claude Community Marketplace
 
-SuperCtx is not yet available in the official Claude plugin marketplace.
-
-After marketplace acceptance, the intended install path is:
+If accepted into the Claude community marketplace, SuperCtx will be installable with:
 
 ```text
-/plugin install superctx@claude-plugins-official
+/plugin marketplace add anthropics/claude-plugins-community
+/plugin install superctx@claude-community
 ```
 
 Until then, use the GitHub installation path above.
