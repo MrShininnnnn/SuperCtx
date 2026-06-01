@@ -424,6 +424,14 @@ def test_add_validations_missing_and_directories(tmp_path):
         add_cmd.run(tmp_path, ".ctx/sources/somefile.md")
     assert "Cannot add files inside the .ctx directory" in str(exc_info.value)
 
+    # Legit nested coincidental .ctx path (docs/.ctx/notes.md) should NOT be rejected
+    nested_ctx_file = tmp_path / "docs" / ".ctx" / "notes.md"
+    nested_ctx_file.parent.mkdir(parents=True, exist_ok=True)
+    nested_ctx_file.write_text("notes\n", encoding="utf-8")
+    res = add_cmd.run(tmp_path, "docs/.ctx/notes.md")
+    assert res.status == "added"
+    assert res.path == "docs/.ctx/notes.md"
+
 
 def test_add_local_candidate_and_convention(tmp_path):
     from superctx import add as add_cmd

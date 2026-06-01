@@ -42,7 +42,7 @@ def run(project_dir: Path, input_path: str) -> AddResult:
         
     rel_path_str = rel_path.as_posix()
     
-    if ".ctx" in rel_path.parts:
+    if rel_path.parts and rel_path.parts[0] == core.CTX_DIRNAME:
         raise AddError("Cannot add files inside the .ctx directory.")
         
     manifest = core.load_manifest(project_dir)

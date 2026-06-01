@@ -62,11 +62,13 @@ def _cmd_init(project_dir: Path) -> int:
         if (project_dir / c["path"]).is_file()
     ]
     if file_cands:
-        print("To track a candidate file, run:")
-        print(f"  /superctx:add {file_cands[0]}")
+        print("To track candidate files, run:")
+        for cand_path in file_cands:
+            print(f"  /superctx:add {cand_path}")
         print()
         print("or:")
-        print(f"  superctx add {file_cands[0]}")
+        for cand_path in file_cands:
+            print(f"  superctx add {cand_path}")
         print()
 
     print("Next step:")
@@ -153,8 +155,9 @@ def _cmd_status(project_dir: Path) -> int:
     file_cands = [r["path"] for r in candidate_rows if (project_dir / r["path"]).is_file()]
     if file_cands:
         print()
-        print("To track this local candidate, run:")
-        print(f"  /superctx:add {file_cands[0]}")
+        print("To track local candidate files, run:")
+        for cand_path in file_cands:
+            print(f"  /superctx:add {cand_path}")
 
     if any(r["state"] in ("drifted", "untracked") for r in rows):
         print()
