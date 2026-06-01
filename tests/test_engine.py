@@ -370,3 +370,14 @@ def test_init_with_candidates_only(tmp_path):
 
     manifest = core.load_manifest(tmp_path)
     assert manifest.get("files", []) == []
+
+
+def test_lookup_known_convention():
+    # Test known convention matching
+    conv = registry.lookup_known_convention(".github/copilot-instructions.md")
+    assert conv is not None
+    assert conv["tools"] == ["GitHub Copilot"]
+
+    # Test unmatched convention
+    assert registry.lookup_known_convention(".agy/ANTIGRAVITY.md") is None
+    assert registry.lookup_known_convention("nonexistent.md") is None
