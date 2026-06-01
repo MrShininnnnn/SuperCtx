@@ -11,8 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed the plugin skill command from `/superctx:setup` to `/superctx:init` to align with Claude Code command vocabulary and avoid confusion with Claude Code built-in `/init`.
 - Renamed `skills/setup/` folder to `skills/init/` to match the new command name.
 - Updated skill `name:` frontmatter fields to explicitly namespaced values (`superctx:init`, `superctx:sync`, `superctx:status`) to ensure Claude Code registers commands under the `superctx:` prefix.
-- Updated README, MARKETPLACE_READINESS.md, and all skill text to use `/superctx:init` consistently.
+- Updated README and all skill text to use `/superctx:init` consistently.
 - Added "Command Discovery and Namespace Safety" section to README with smoke test instructions.
+
+### Removed
+- Moved the marketplace readiness report out of the tracked repository root because it is local development planning material.
 
 ## [0.1.1] - 2026-05-31
 

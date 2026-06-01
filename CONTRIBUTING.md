@@ -47,7 +47,7 @@ These paths are intentionally local-only and should not be committed:
 docs/
 ```
 
-Use them for local agent setup, workflow notes, and private planning. Public-facing documentation belongs in tracked root files such as `README.md`, `CONTRIBUTING.md`, and `MARKETPLACE_READINESS.md`.
+Use them for local agent setup, workflow notes, and private planning. Public-facing documentation belongs in tracked root files such as `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `CHANGELOG.md`.
 
 ## Pull Requests
 
