@@ -47,4 +47,3 @@ def run(project_dir: Path) -> dict:
         "detected": [c["path"] for c in verified],
         "discovery": discovery,
     }
-

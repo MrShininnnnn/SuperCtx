@@ -159,4 +159,3 @@ def run(project_dir: Path) -> list[dict]:
                 })
 
     return results
-

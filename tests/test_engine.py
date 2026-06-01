@@ -69,7 +69,7 @@ def test_init_detects_hidden_instruction_files(tmp_path):
     assert sync_result["missing"] == []
 
     # Verify status reports them as synced
-    status_rows = status_cmd.run(tmp_path)
+    status_rows = [r for r in status_cmd.run(tmp_path) if r["state"] != "untracked_candidate"]
     assert len(status_rows) == 3
     for row in status_rows:
         assert row["state"] == "synced"
@@ -309,3 +309,64 @@ def test_status_diagnostics_warns_on_stale_install(tmp_path, monkeypatch):
     assert diag_codex["supports_codex_agents"] is False
     assert diag_codex["project_has_codex_agents"] is True
     assert diag_codex["stale_install"] is True
+
+
+def test_candidate_detection_and_reporting(tmp_path):
+    make_repo(tmp_path, {
+        ".claude/CLAUDE.md": "claude instructions\n",
+        ".codex/AGENTS.md": "codex instructions\n",
+        ".agents/rules/project.md": "rules\n",
+        "agents/skills/my-skill/SKILL.md": "skills\n",
+        ".agent/rules/legacy.md": "legacy\n",
+        ".agy/ANTIGRAVITY.md": "agy file\n",
+    })
+
+    # Run init
+    result = init_cmd.run(tmp_path)
+    assert result["created"] is True
+    assert set(result["detected"]) == {".claude/CLAUDE.md", ".codex/AGENTS.md"}
+
+    disc = result["discovery"]
+    assert len(disc["verified_instruction_file"]) == 2
+
+    # Verify folder candidates
+    supported_paths = {cand["path"] for cand in disc["supported_folder_candidate"]}
+    assert ".agents/rules" in supported_paths
+    assert "agents/skills" in supported_paths
+
+    # Verify legacy candidates
+    legacy_paths = {cand["path"] for cand in disc["legacy_or_uncertain_folder_candidate"]}
+    assert ".agent/rules" in legacy_paths
+
+    # Verify unverified candidate check selects file (.agy/ANTIGRAVITY.md) over directory (.agy)
+    unverified_paths = {cand["path"] for cand in disc["unverified_local_candidate"]}
+    assert ".agy/ANTIGRAVITY.md" in unverified_paths
+
+    # Verify manifest only contains verified instruction files
+    manifest = core.load_manifest(tmp_path)
+    tracked_paths = {f["path"] for f in manifest["files"]}
+    assert tracked_paths == {".claude/CLAUDE.md", ".codex/AGENTS.md"}
+
+    # Run status and verify candidates are returned
+    status_rows = status_cmd.run(tmp_path)
+    candidates = [r for r in status_rows if r["state"] == "untracked_candidate"]
+    assert len(candidates) >= 4
+    cand_map = {c["path"]: c for c in candidates}
+
+    assert cand_map[".agents/rules"]["label"] == "Antigravity workspace rules"
+    assert cand_map[".agy/ANTIGRAVITY.md"]["label"] == "local convention candidate"
+    assert cand_map[".agy/ANTIGRAVITY.md"]["note"] == "not verified official support"
+
+
+def test_init_with_candidates_only(tmp_path):
+    make_repo(tmp_path, {
+        ".agy/ANTIGRAVITY.md": "agy file\n",
+    })
+
+    result = init_cmd.run(tmp_path)
+    assert result["created"] is True
+    assert result["detected"] == []
+    assert len(result["discovery"]["unverified_local_candidate"]) == 1
+
+    manifest = core.load_manifest(tmp_path)
+    assert manifest.get("files", []) == []

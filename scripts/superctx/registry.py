@@ -195,4 +195,3 @@ def detect_all(project_dir: Path) -> dict[str, list[dict]]:
         })
 
     return res
-
