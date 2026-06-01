@@ -20,14 +20,44 @@ def _cmd_init(project_dir: Path) -> int:
     if not result["created"]:
         print(f"SuperCtx: {result['ctx_dir']} already exists — no changes made.")
         return 0
-    print(f"SuperCtx: created {result['ctx_dir']}")
-    if result["detected"]:
-        print("Tracked tool files detected:")
-        for path in result["detected"]:
-            print(f"  - {path}")
+    print(f"SuperCtx initialized {result['ctx_dir']}.")
+    print()
+
+    disc = result["discovery"]
+    verified = disc["verified_instruction_file"]
+    if verified:
+        print("Auto-connected instruction files:")
+        for c in verified:
+            tools_str = ", ".join(c.get("tools", []))
+            print(f"  ✓ {c['path']:<24} {tools_str}")
+        print()
     else:
-        print("No known tool instruction files detected yet.")
-    print("Next: run /superctx:sync to centralize into .ctx/SUPERCTX.md")
+        print("No verified instruction files were auto-connected.")
+        print()
+
+    sup_folders = disc["supported_folder_candidate"]
+    if sup_folders:
+        print("Found supported folder candidates:")
+        for cand in sup_folders:
+            print(f"  ? {cand['path']:<24} {cand['label']}; {cand['note']}")
+        print()
+
+    legacy_cands = disc["legacy_or_uncertain_folder_candidate"]
+    if legacy_cands:
+        print("Found legacy or uncertain candidates:")
+        for cand in legacy_cands:
+            print(f"  ? {cand['path']:<24} {cand['label']}; {cand['note']}")
+        print()
+
+    unverified_cands = disc["unverified_local_candidate"]
+    if unverified_cands:
+        print("Found unverified local candidates:")
+        for cand in unverified_cands:
+            print(f"  ? {cand['path']:<24} {cand['label']}; {cand['note']}")
+        print()
+
+    print("Next step:")
+    print("  Run /superctx:sync to centralize tracked instruction files.")
     return 0
 
 
@@ -81,10 +111,24 @@ def _cmd_status(project_dir: Path) -> int:
     if not rows:
         print("SuperCtx: no tracked files. Run /superctx:init first.")
         return 0
-    print("SuperCtx status:")
-    for row in rows:
+
+    tracked_rows = [r for r in rows if r["state"] != "untracked_candidate"]
+    candidate_rows = [r for r in rows if r["state"] == "untracked_candidate"]
+
+    print("Tracked files:")
+    for row in tracked_rows:
         print(f"  {row['state']:<10} {row['path']}")
-    if any(r["state"] in ("drifted", "untracked") for r in rows):
+
+    if candidate_rows:
+        print()
+        print("Untracked candidates:")
+        for row in candidate_rows:
+            note_suffix = f"; {row['note']}" if row["note"] else ""
+            label_text = f"{row['label']}{note_suffix}"
+            print(f"  ? {row['path']:<24} {label_text}")
+
+    if any(r["state"] in ("drifted", "untracked") for r in tracked_rows):
+        print()
         print("Run /superctx:sync to re-centralize.")
     return 0
 
