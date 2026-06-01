@@ -81,6 +81,7 @@ After installation, the SuperCtx skills are available as slash commands:
 /superctx:init
 /superctx:sync
 /superctx:status
+/superctx:add <path>
 ```
 
 Run those commands from a repository that has one or more context files such as `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`.
@@ -157,6 +158,7 @@ After installing or reloading the plugin (`/reload-plugins`), you can verify com
 /superctx:init
 /superctx:sync
 /superctx:status
+/superctx:add
 ```
 
 **Type `/status`** — only the Claude Code built-in status command should appear. SuperCtx does not register an unprefixed `/status` command.
@@ -171,6 +173,7 @@ SuperCtx also ships a Python CLI. From a source checkout with the package instal
 superctx init
 superctx sync
 superctx status
+superctx add <path>
 ```
 
 The same commands can be run without the console script:
@@ -179,6 +182,7 @@ The same commands can be run without the console script:
 python -m superctx init
 python -m superctx sync
 python -m superctx status
+python -m superctx add <path>
 ```
 
 ## Current Status
