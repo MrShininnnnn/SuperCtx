@@ -13,6 +13,7 @@ from pathlib import Path
 from . import init as init_cmd
 from . import status as status_cmd
 from . import sync as sync_cmd
+from . import add as add_cmd
 
 
 def _cmd_init(project_dir: Path) -> int:
@@ -143,15 +144,34 @@ def _cmd_status(project_dir: Path) -> int:
     return 0
 
 
+def _cmd_add(project_dir: Path, file_path: str) -> int:
+    try:
+        result = add_cmd.run(project_dir, file_path)
+        print(result.message)
+        return 0
+    except add_cmd.AddError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="superctx")
     sub = parser.add_subparsers(dest="cmd", required=True)
     for name in ("init", "sync", "status"):
         p = sub.add_parser(name)
         p.add_argument("project_dir", nargs="?", default=".")
+
+    # Add parser
+    p_add = sub.add_parser("add")
+    p_add.add_argument("path")
+    p_add.add_argument("project_dir", nargs="?", default=".")
+
     args = parser.parse_args(argv)
 
     project_dir = Path(args.project_dir).resolve()
+    if args.cmd == "add":
+        return _cmd_add(project_dir, args.path)
+
     dispatch = {"init": _cmd_init, "sync": _cmd_sync, "status": _cmd_status}
     return dispatch[args.cmd](project_dir)
 
