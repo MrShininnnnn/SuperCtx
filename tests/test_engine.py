@@ -370,3 +370,101 @@ def test_init_with_candidates_only(tmp_path):
 
     manifest = core.load_manifest(tmp_path)
     assert manifest.get("files", []) == []
+
+
+def test_lookup_known_convention():
+    # Test known convention matching
+    conv = registry.lookup_known_convention(".github/copilot-instructions.md")
+    assert conv is not None
+    assert conv["tools"] == ["GitHub Copilot"]
+
+    # Test unmatched convention
+    assert registry.lookup_known_convention(".agy/ANTIGRAVITY.md") is None
+    assert registry.lookup_known_convention("nonexistent.md") is None
+
+
+def test_add_validates_manifest_exists(tmp_path):
+    import pytest
+    from superctx import add as add_cmd
+    # Without init, add should raise AddError
+    with pytest.raises(add_cmd.AddError) as exc_info:
+        add_cmd.run(tmp_path, "somefile.md")
+    assert "SuperCtx is not initialized in this project" in str(exc_info.value)
+
+
+def test_add_validations_missing_and_directories(tmp_path):
+    import pytest
+    from superctx import add as add_cmd
+    init_cmd.run(tmp_path)
+
+    # Missing path validation
+    with pytest.raises(add_cmd.AddError) as exc_info:
+        add_cmd.run(tmp_path, "missing.md")
+    assert "File does not exist" in str(exc_info.value)
+
+    # Directory path validation
+    folder_path = tmp_path / "folder"
+    folder_path.mkdir()
+    with pytest.raises(add_cmd.AddError) as exc_info:
+        add_cmd.run(tmp_path, "folder")
+    assert "Directories are not supported" in str(exc_info.value)
+
+    # Outside project validation
+    outside = tmp_path.parent / "outside.md"
+    outside.write_text("x", encoding="utf-8")
+    with pytest.raises(add_cmd.AddError) as exc_info:
+        add_cmd.run(tmp_path, "../outside.md")
+    assert "Path must be inside the project root" in str(exc_info.value)
+
+    # Inside .ctx/ sources validation
+    ctx_file = core.ctx_dir(tmp_path) / "sources" / "somefile.md"
+    ctx_file.parent.mkdir(parents=True, exist_ok=True)
+    ctx_file.write_text("x", encoding="utf-8")
+    with pytest.raises(add_cmd.AddError) as exc_info:
+        add_cmd.run(tmp_path, ".ctx/sources/somefile.md")
+    assert "Cannot add files inside the .ctx directory" in str(exc_info.value)
+
+    # Legit nested coincidental .ctx path (docs/.ctx/notes.md) should NOT be rejected
+    nested_ctx_file = tmp_path / "docs" / ".ctx" / "notes.md"
+    nested_ctx_file.parent.mkdir(parents=True, exist_ok=True)
+    nested_ctx_file.write_text("notes\n", encoding="utf-8")
+    res = add_cmd.run(tmp_path, "docs/.ctx/notes.md")
+    assert res.status == "added"
+    assert res.path == "docs/.ctx/notes.md"
+
+
+def test_add_local_candidate_and_convention(tmp_path):
+    from superctx import add as add_cmd
+    init_cmd.run(tmp_path)
+
+    # Add unrecognized candidate (.agy/ANTIGRAVITY.md)
+    agy_file = tmp_path / ".agy/ANTIGRAVITY.md"
+    agy_file.parent.mkdir(parents=True, exist_ok=True)
+    agy_file.write_text("agy\n", encoding="utf-8")
+
+    res = add_cmd.run(tmp_path, ".agy/ANTIGRAVITY.md")
+    assert res.status == "added"
+    assert res.tools == []
+    assert ".agy/ANTIGRAVITY.md" in res.message
+
+    # Check manifest
+    manifest = core.load_manifest(tmp_path)
+    assert {"path": ".agy/ANTIGRAVITY.md", "tools": []} in manifest["files"]
+
+    # Add known convention (.github/copilot-instructions.md)
+    copilot_file = tmp_path / ".github/copilot-instructions.md"
+    copilot_file.parent.mkdir(parents=True, exist_ok=True)
+    copilot_file.write_text("copilot\n", encoding="utf-8")
+
+    res_conv = add_cmd.run(tmp_path, ".github/copilot-instructions.md")
+    assert res_conv.status == "added"
+    assert res_conv.tools == ["GitHub Copilot"]
+
+    manifest2 = core.load_manifest(tmp_path)
+    assert {"path": ".github/copilot-instructions.md", "tools": ["GitHub Copilot"]} in manifest2["files"]
+
+    # Duplicate add check (should be idempotent)
+    res_dup = add_cmd.run(tmp_path, ".agy/ANTIGRAVITY.md")
+    assert res_dup.status == "already_tracked"
+    assert res_dup.tools == []
+    assert "is already tracked" in res_dup.message

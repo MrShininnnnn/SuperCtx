@@ -151,3 +151,12 @@ def detect_all(project_dir: Path) -> dict[str, list[dict]]:
         })
 
     return res
+
+
+def lookup_known_convention(path_str: str) -> dict | None:
+    """Find a known instruction-file convention by its relative path."""
+    normalized = path_str.strip().replace("\\", "/").lstrip("/")
+    for convention in instruction_conventions():
+        if convention["path"] == normalized:
+            return convention
+    return None

@@ -13,6 +13,7 @@ from pathlib import Path
 from . import init as init_cmd
 from . import status as status_cmd
 from . import sync as sync_cmd
+from . import add as add_cmd
 
 
 def _cmd_init(project_dir: Path) -> int:
@@ -54,6 +55,20 @@ def _cmd_init(project_dir: Path) -> int:
         print("Found unverified local candidates:")
         for cand in unverified_cands:
             print(f"  ? {cand['path']:<24} {cand['label']}; {cand['note']}")
+        print()
+
+    file_cands = [
+        c["path"] for c in (sup_folders + legacy_cands + unverified_cands)
+        if (project_dir / c["path"]).is_file()
+    ]
+    if file_cands:
+        print("To track candidate files, run:")
+        for cand_path in file_cands:
+            print(f"  /superctx:add {cand_path}")
+        print()
+        print("or:")
+        for cand_path in file_cands:
+            print(f"  superctx add {cand_path}")
         print()
 
     print("Next step:")
@@ -137,10 +152,27 @@ def _cmd_status(project_dir: Path) -> int:
             label_text = f"{row['label']}{note_suffix}"
             print(f"  ? {row['path']:<24} {label_text}")
 
+    file_cands = [r["path"] for r in candidate_rows if (project_dir / r["path"]).is_file()]
+    if file_cands:
+        print()
+        print("To track local candidate files, run:")
+        for cand_path in file_cands:
+            print(f"  /superctx:add {cand_path}")
+
     if any(r["state"] in ("drifted", "untracked") for r in rows):
         print()
         print("Run /superctx:sync to re-centralize.")
     return 0
+
+
+def _cmd_add(project_dir: Path, file_path: str) -> int:
+    try:
+        result = add_cmd.run(project_dir, file_path)
+        print(result.message)
+        return 0
+    except add_cmd.AddError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -149,9 +181,18 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("init", "sync", "status"):
         p = sub.add_parser(name)
         p.add_argument("project_dir", nargs="?", default=".")
+
+    # Add parser
+    p_add = sub.add_parser("add")
+    p_add.add_argument("path")
+    p_add.add_argument("project_dir", nargs="?", default=".")
+
     args = parser.parse_args(argv)
 
     project_dir = Path(args.project_dir).resolve()
+    if args.cmd == "add":
+        return _cmd_add(project_dir, args.path)
+
     dispatch = {"init": _cmd_init, "sync": _cmd_sync, "status": _cmd_status}
     return dispatch[args.cmd](project_dir)
 

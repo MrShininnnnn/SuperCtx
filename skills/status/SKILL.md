@@ -25,6 +25,5 @@ Each tracked path reports one state:
 | `missing` | tracked in the manifest but the file is gone |
 | `untracked` | a known instruction file exists in the repo but isn't in the manifest |
 
-If anything is `drifted` or `untracked`, recommend `/superctx:sync`. For `untracked`, mention the
-file can be added to `.ctx/manifest.toml`. For `missing`, ask whether the file was intentionally
+If anything is `drifted` or `untracked`, recommend `/superctx:sync`. For `untracked`, recommend running `/superctx:add <path>` (or `superctx add <path>` on CLI) to begin tracking them. For `missing`, ask whether the file was intentionally
 removed.
