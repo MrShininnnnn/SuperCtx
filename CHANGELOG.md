@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated skill `name:` frontmatter fields to explicitly namespaced values (`superctx:init`, `superctx:sync`, `superctx:status`) to ensure Claude Code registers commands under the `superctx:` prefix.
 - Updated README and all skill text to use `/superctx:init` consistently.
 - Added "Command Discovery and Namespace Safety" section to README with smoke test instructions.
+- Updated README marketplace installation target from `@claude-plugins-official` to `@claude-community` and added "Coming Soon: Claude Community Marketplace" section.
+- Verified fresh install smoke test and command-palette evidence for marketplace submission readiness (20 pytest tests pass; `claude plugin validate .` passes).
 
 ### Removed
 - Moved the marketplace readiness report out of the tracked repository root because it is local development planning material.
