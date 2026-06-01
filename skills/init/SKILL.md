@@ -25,4 +25,4 @@ exists it makes no changes.
   and `.ctx/SUPERCTX.md` are committed.
 - Next step: run `/superctx:sync` to populate `.ctx/SUPERCTX.md`.
 
-If nothing was detected, suggest the user add file paths to `.ctx/manifest.toml` manually using the `[[files]]` format with a `path` string and a `tools` list of strings (e.g., `tools = ["Claude Code"]`).
+If nothing was detected, suggest the user run `/superctx:add <path>` to start tracking custom files, or manually add file paths to `.ctx/manifest.toml` as an advanced fallback.

@@ -57,6 +57,18 @@ def _cmd_init(project_dir: Path) -> int:
             print(f"  ? {cand['path']:<24} {cand['label']}; {cand['note']}")
         print()
 
+    file_cands = [
+        c["path"] for c in (sup_folders + legacy_cands + unverified_cands)
+        if (project_dir / c["path"]).is_file()
+    ]
+    if file_cands:
+        print("To track a candidate file, run:")
+        print(f"  /superctx:add {file_cands[0]}")
+        print()
+        print("or:")
+        print(f"  superctx add {file_cands[0]}")
+        print()
+
     print("Next step:")
     print("  Run /superctx:sync to centralize tracked instruction files.")
     return 0
@@ -137,6 +149,12 @@ def _cmd_status(project_dir: Path) -> int:
             note_suffix = f"; {row['note']}" if row["note"] else ""
             label_text = f"{row['label']}{note_suffix}"
             print(f"  ? {row['path']:<24} {label_text}")
+
+    file_cands = [r["path"] for r in candidate_rows if (project_dir / r["path"]).is_file()]
+    if file_cands:
+        print()
+        print("To track this local candidate, run:")
+        print(f"  /superctx:add {file_cands[0]}")
 
     if any(r["state"] in ("drifted", "untracked") for r in rows):
         print()
