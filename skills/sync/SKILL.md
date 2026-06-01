@@ -1,5 +1,5 @@
 ---
-name: sync
+name: superctx:sync
 description: Use when the user wants to centralize, refresh, or update the .ctx hub, or after editing CLAUDE.md / AGENTS.md / GEMINI.md and wanting those changes pulled into .ctx. Also use when /superctx:status reports drift.
 ---
 
@@ -24,4 +24,4 @@ provenance header).
 - Remind that `.ctx/SUPERCTX.md` is **generated** — to change it, edit the underlying tool files
   and re-run sync, don't hand-edit the hub.
 
-If the user has no `.ctx/` yet, run `/superctx:setup` first.
+If the user has no `.ctx/` yet, run `/superctx:init` first.

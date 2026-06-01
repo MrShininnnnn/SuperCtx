@@ -1,5 +1,5 @@
 ---
-name: status
+name: superctx:status
 description: Use when the user asks whether their tool instruction files have drifted from the .ctx hub, wants a SuperCtx status check, or asks what needs syncing. Also use to verify the hub is current before relying on it.
 ---
 
