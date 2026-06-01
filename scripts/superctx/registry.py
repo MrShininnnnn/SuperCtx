@@ -14,8 +14,6 @@ from pathlib import Path
 class DiscoveryCandidate:
     path: str
     label: str
-    category: str
-    auto_connect: bool
     note: str
 
 
@@ -23,15 +21,11 @@ SUPPORTED_FOLDER_CANDIDATES = [
     DiscoveryCandidate(
         path=".agents/rules",
         label="Antigravity workspace rules",
-        category="supported_folder_candidate",
-        auto_connect=False,
         note="folder sync not enabled yet",
     ),
     DiscoveryCandidate(
         path="agents/skills",
         label="Antigravity skills",
-        category="supported_folder_candidate",
-        auto_connect=False,
         note="folder sync not enabled yet",
     ),
 ]
@@ -40,63 +34,25 @@ LEGACY_OR_UNCERTAIN_CANDIDATES = [
     DiscoveryCandidate(
         path=".agent/rules",
         label="Legacy Antigravity workspace rules",
-        category="legacy_or_uncertain_folder_candidate",
-        auto_connect=False,
         note="folder sync not enabled yet",
     ),
     DiscoveryCandidate(
         path=".agents/skills",
         label="Antigravity skills candidate",
-        category="legacy_or_uncertain_folder_candidate",
-        auto_connect=False,
         note="folder sync not enabled yet",
     ),
     DiscoveryCandidate(
         path=".agents/hooks.json",
         label="Antigravity hooks configuration",
-        category="legacy_or_uncertain_folder_candidate",
-        auto_connect=False,
         note="not confirmed official support",
     ),
     DiscoveryCandidate(
         path=".agents/hooks",
         label="Antigravity hooks",
-        category="legacy_or_uncertain_folder_candidate",
-        auto_connect=False,
         note="folder sync not enabled yet",
     ),
 ]
 
-UNVERIFIED_LOCAL_CANDIDATES = [
-    DiscoveryCandidate(
-        path=".agy/ANTIGRAVITY.md",
-        label="local convention candidate",
-        category="unverified_local_candidate",
-        auto_connect=False,
-        note="not verified official support",
-    ),
-    DiscoveryCandidate(
-        path=".agy",
-        label="local convention candidate",
-        category="unverified_local_candidate",
-        auto_connect=False,
-        note="not verified official support",
-    ),
-    DiscoveryCandidate(
-        path=".antigravity/ANTIGRAVITY.md",
-        label="local convention candidate",
-        category="unverified_local_candidate",
-        auto_connect=False,
-        note="not verified official support",
-    ),
-    DiscoveryCandidate(
-        path=".antigravity",
-        label="local convention candidate",
-        category="unverified_local_candidate",
-        auto_connect=False,
-        note="not verified official support",
-    ),
-]
 
 
 

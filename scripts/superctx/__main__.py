@@ -112,22 +112,32 @@ def _cmd_status(project_dir: Path) -> int:
         print("SuperCtx: no tracked files. Run /superctx:init first.")
         return 0
 
-    tracked_rows = [r for r in rows if r["state"] != "untracked_candidate"]
+    tracked_rows = [r for r in rows if r["state"] in ("synced", "drifted", "missing")]
+    untracked_verified_rows = [r for r in rows if r["state"] == "untracked"]
     candidate_rows = [r for r in rows if r["state"] == "untracked_candidate"]
 
-    print("Tracked files:")
-    for row in tracked_rows:
-        print(f"  {row['state']:<10} {row['path']}")
+    if tracked_rows:
+        print("Tracked files:")
+        for row in tracked_rows:
+            print(f"  {row['state']:<10} {row['path']}")
+
+    if untracked_verified_rows:
+        if tracked_rows:
+            print()
+        print("Untracked instruction files (standard conventions):")
+        for row in untracked_verified_rows:
+            print(f"  untracked  {row['path']}")
 
     if candidate_rows:
-        print()
+        if tracked_rows or untracked_verified_rows:
+            print()
         print("Untracked candidates:")
         for row in candidate_rows:
             note_suffix = f"; {row['note']}" if row["note"] else ""
             label_text = f"{row['label']}{note_suffix}"
             print(f"  ? {row['path']:<24} {label_text}")
 
-    if any(r["state"] in ("drifted", "untracked") for r in tracked_rows):
+    if any(r["state"] in ("drifted", "untracked") for r in rows):
         print()
         print("Run /superctx:sync to re-centralize.")
     return 0

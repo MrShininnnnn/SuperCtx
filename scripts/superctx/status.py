@@ -141,13 +141,13 @@ def run(project_dir: Path) -> list[dict]:
             results.append({"path": c["path"], "state": "untracked"})
 
     # Untracked folder and local candidates
-    candidate_types = [
-        ("supported_folder_candidate", "supported folder candidate"),
-        ("legacy_or_uncertain_folder_candidate", "legacy or uncertain candidate"),
-        ("unverified_local_candidate", "unverified local candidate"),
+    candidate_keys = [
+        "supported_folder_candidate",
+        "legacy_or_uncertain_folder_candidate",
+        "unverified_local_candidate",
     ]
 
-    for key, label in candidate_types:
+    for key in candidate_keys:
         for cand in discovery[key]:
             if cand["path"] not in tracked:
                 results.append({

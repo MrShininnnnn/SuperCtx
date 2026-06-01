@@ -45,6 +45,19 @@ GEMINI.md  ─┘
 
 `SUPERCTX.md` is a structured aggregation of the source instruction files with provenance for each source. Your original tool files are never modified.
 
+## What SuperCtx Auto-Detects
+
+SuperCtx scans the project directory during initialization and status reporting:
+
+1. **Verified Instruction Files** (Auto-connected):
+   Root-level `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and hidden standard paths like `.claude/CLAUDE.md`, `.codex/AGENTS.md`, and `.github/copilot-instructions.md`. These are automatically added to `.ctx/manifest.toml`.
+2. **Supported Folder Candidates** (Surfaced, not auto-connected):
+   Known standard folder layouts like `.agents/rules/` and `agents/skills/` are surfaced as candidates for future sync.
+3. **Legacy or Uncertain Candidates** (Surfaced, not auto-connected):
+   Legacy layouts such as `.agent/rules/` or `.agents/skills/` are reported.
+4. **Unverified Local Candidates** (Surfaced, not auto-connected):
+   Local conventions such as `.agy/` or `.agy/ANTIGRAVITY.md` are surfaced and labeled as unverified local candidates (not official support).
+
 ## User Installation
 
 SuperCtx is early software. Today, install it directly from GitHub for Claude Code or run the Python CLI from a source checkout.
@@ -117,14 +130,17 @@ The workflow:
 
 1. `/superctx:init` scans the project for known tool instruction files and creates `.ctx/` with a manifest.
 2. `/superctx:sync` pulls tracked tool files into `.ctx/SUPERCTX.md`.
-3. `/superctx:status` reports whether tracked files are synced, drifted, missing, or untracked.
+3. `/superctx:status` reports whether tracked files are synced, drifted, or missing, and lists any untracked standard files or candidates.
 
 Example status output:
 
 ```text
-synced     CLAUDE.md
-drifted    AGENTS.md
-untracked  GEMINI.md
+Tracked files:
+  synced     CLAUDE.md
+  drifted    AGENTS.md
+
+Untracked candidates:
+  ? .agy/ANTIGRAVITY.md     local convention candidate; not verified official support
 ```
 
 Run `/superctx:sync` any time a tool instruction file changes.
@@ -232,7 +248,7 @@ superctx sync
 superctx status
 ```
 
-Project-local agent folders and workflow notes are intentionally ignored:
+Project-local agent folders and workflow notes are gitignored to prevent committing local setups, but SuperCtx scans and reports files inside them as candidates:
 
 ```text
 .claude/
