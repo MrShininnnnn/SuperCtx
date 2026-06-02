@@ -3,6 +3,8 @@
 **Status**: Proposed for v0.2 direction
 **Date**: 2026-06-02
 
+> **Note on Directory Roles**: This document resides in the tracked `architecture/` directory, which is reserved for committed, public architecture decision records (ADRs) defining the project's design standards. This is distinct from `docs/`, which remains local-only and gitignored for temporary developer workspace notes.
+
 ## Context
 
 In SuperCtx v0.1, the synchronization model is **inward-sync**:
@@ -37,7 +39,7 @@ The v0.2 architecture divides repository context files into three strict roles:
 
 ### 3. Backups (`.ctx/sources/`)
 - **Role**: Backup storage for original instruction files created during the initial migration (e.g., when migrating from pre-SuperCtx to v0.2).
-- **Status**: Completely **inactive**.
+- **Status**: Completely **inactive** in the target v0.2 model. (Note: In v0.1, `sources/` acts as an active local cache for drift-detection, but in v0.2 the drift-detection is computed directly by checking shims against `.ctx/SUPERCTX.md`, making `sources/` an inactive archive).
 - **Constraint**: Backups must **never** be imported or read as active context by agents. They are for recovery/repair only. Backups can be stale, superseded, or partial recovery copies, so importing them can reintroduce outdated instructions.
 
 ## Target v0.2 Command Semantics
@@ -58,7 +60,7 @@ In SuperCtx v0.2, the CLI commands change their execution semantics to support t
 - **Verifications**:
   1. All tracked paths in the manifest exist as shims.
   2. Shims have not been modified manually (i.e. they match their expected generated shim format and have not drifted).
-  3. The `.ctx/SUPERCTX.md` hub has no structure or mapping errors.
+  3. The `.ctx/SUPERCTX.md` hub exists and is not empty.
   4. Surfaces any untracked conventions or candidates.
 
 ### 4. `sync`
