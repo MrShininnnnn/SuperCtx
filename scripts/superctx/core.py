@@ -66,7 +66,11 @@ def _toml_array(items) -> str:
 
 
 def dump_manifest(data: dict) -> str:
-    """Serialize the small SuperCtx manifest schema to TOML (stdlib has no TOML writer)."""
+    """Serialize the small SuperCtx manifest schema to TOML (stdlib has no TOML writer).
+
+    WARNING: This serializer is schema-rigid and only writes the [project] table and
+    the [[files]] array. Unrecognized fields or custom keys in data will not be preserved.
+    """
     project = data.get("project", {})
     lines = [
         "[project]",
@@ -78,5 +82,7 @@ def dump_manifest(data: dict) -> str:
         lines.append("[[files]]")
         lines.append(f'path = {_toml_str(entry["path"])}')
         lines.append(f'tools = {_toml_array(entry.get("tools", []))}')
+        if "note" in entry:
+            lines.append(f'note = {_toml_str(entry["note"])}')
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"

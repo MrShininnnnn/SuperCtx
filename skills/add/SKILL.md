@@ -17,4 +17,4 @@ The command takes the path to the instruction file to track. It updates `.ctx/ma
 
 ## Then report to the user
 
-Present the result printed by the command. If the file was successfully added, tell the user the next step is running `/superctx:sync` to aggregate it into `.ctx/SUPERCTX.md`.
+Present the result printed by the command. If the file was successfully added, tell the user that the file has been backed up, incorporated into `.ctx/SUPERCTX.md`, and replaced with a generated shim. Explain that the next step is to edit `.ctx/SUPERCTX.md` directly to update instructions.
