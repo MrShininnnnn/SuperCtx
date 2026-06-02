@@ -1,6 +1,6 @@
 ---
 name: superctx:status
-description: Use when the user asks whether their tool instruction files have drifted from the .ctx hub, wants a SuperCtx status check, or asks about hub-and-shim health. Also use to verify the hub is current and shims are healthy before relying on them.
+description: Use when the user wants a SuperCtx status check, asks about hub-and-shim health, or needs to verify that the hub exists and registered shims/backups are healthy.
 ---
 
 # SuperCtx Status

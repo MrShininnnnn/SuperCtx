@@ -27,8 +27,11 @@ def test_demo_project_generates_expected_manifest_and_hub(tmp_path):
     assert init_result["created"] is True
     assert init_result["detected"] == ["CLAUDE.md", "AGENTS.md", "GEMINI.md"]
     assert sync_result == {
-        "centralized": ["CLAUDE.md", "AGENTS.md", "GEMINI.md"],
-        "missing": [],
+        "mode": "repair",
+        "healthy": ["CLAUDE.md", "AGENTS.md", "GEMINI.md"],
+        "repaired": [],
+        "unresolved": [],
+        "warnings": [],
     }
     # Assert status rows matches new schema
     assert next(r for r in status_rows if r["kind"] == "hub") == {
@@ -86,7 +89,9 @@ def test_demo_project_cli_round_trip(tmp_path):
     )
 
     assert "initialized" in init_result.stdout
-    assert "+ centralized CLAUDE.md" in sync_result.stdout
+    assert "SuperCtx: sync completed." in sync_result.stdout
+    assert "Already healthy shims:" in sync_result.stdout
+    assert "  - CLAUDE.md" in sync_result.stdout
     assert "Hub:\n- .ctx/SUPERCTX.md exists" in status_result.stdout
     assert "- CLAUDE.md imports .ctx/SUPERCTX.md" in status_result.stdout
     assert "- AGENTS.md points to .ctx/SUPERCTX.md" in status_result.stdout

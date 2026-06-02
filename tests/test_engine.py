@@ -3,7 +3,7 @@
 from importlib import resources
 from pathlib import Path
 
-from superctx import core, init as init_cmd, registry, status as status_cmd, sync as sync_cmd
+from superctx import core, init as init_cmd, registry, shim, status as status_cmd, sync as sync_cmd
 
 
 def make_repo(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -81,15 +81,19 @@ def test_init_detects_hidden_instruction_files(tmp_path):
     assert "## From: AGENTS.md" in hub_content
     assert "root agents" in hub_content
 
-    # Since they are shims now, run sync to ensure it doesn't overwrite backups and correctly aggregates
+    # Since they are shims now, run sync to ensure it treats them as healthy and does not rewrite the hub.
     sync_result = sync_cmd.run(tmp_path)
-    assert set(sync_result["centralized"]) == {
+    assert sync_result["mode"] == "repair"
+    assert set(sync_result["healthy"]) == {
         ".claude/CLAUDE.md",
         ".codex/AGENTS.md",
         "AGENTS.md"
     }
+    assert sync_result["repaired"] == []
+    assert sync_result["unresolved"] == []
+    assert sync_result["warnings"] == []
 
-    # Verify status reports them as healthy (after we check in sync they are resolved from backups)
+    # Verify status reports connected files as healthy shims with healthy inactive backups.
     status_rows = status_cmd.run(tmp_path)
     assert len(status_rows) == 8
     assert next(r for r in status_rows if r["kind"] == "hub")["state"] == "healthy"
@@ -139,39 +143,165 @@ def test_init_backup_collision_reports_failure(tmp_path):
 
 # --- sync -------------------------------------------------------------------
 
-def test_sync_centralizes_with_provenance(tmp_path):
-    make_repo(tmp_path, {"CLAUDE.md": "# Claude\nhello\n", "AGENTS.md": "# Agents\nworld\n"})
-    init_cmd.run(tmp_path)
-    result = sync_cmd.run(tmp_path)
-
-    assert set(result["centralized"]) == {"CLAUDE.md", "AGENTS.md"}
-    assert (core.sources_dir(tmp_path) / "CLAUDE.md").is_file()
-
-    hub = core.hub_path(tmp_path).read_text()
-    assert "## From: CLAUDE.md  (Claude Code)" in hub
-    assert "hello" in hub and "world" in hub
-
-
-def test_sync_reports_missing_tracked_file(tmp_path):
+def test_sync_never_modifies_hub(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "a\n"})
     init_cmd.run(tmp_path)
-    (tmp_path / "CLAUDE.md").unlink()
+
+    hub_p = core.hub_path(tmp_path)
+    hub_p.write_text("custom user hub edits\n", encoding="utf-8")
+
+    # Intentionally corrupt the shim to trigger a repair
+    (tmp_path / "CLAUDE.md").write_text("corrupted content\n", encoding="utf-8")
+
     result = sync_cmd.run(tmp_path)
-    assert result["centralized"] == []
-    assert result["missing"] == ["CLAUDE.md"]
+
+    # Hub content must remain completely unchanged
+    assert hub_p.read_text(encoding="utf-8") == "custom user hub edits\n"
+    assert result["mode"] == "repair"
 
 
-def test_sync_mirrors_nested_same_basename(tmp_path):
-    make_repo(tmp_path, {"CLAUDE.md": "root\n", "packages/foo/CLAUDE.md": "nested\n"})
+def test_sync_healthy_shims_are_untouched(tmp_path):
+    import time
+    make_repo(tmp_path, {"CLAUDE.md": "a\n", "AGENTS.md": "b\n"})
     init_cmd.run(tmp_path)
-    # auto-detect only finds root CLAUDE.md; add the nested path by hand to exercise mirroring
-    manifest = core.load_manifest(tmp_path)
-    manifest["files"].append({"path": "packages/foo/CLAUDE.md", "tools": ["Claude Code"]})
-    core.manifest_path(tmp_path).write_text(core.dump_manifest(manifest), encoding="utf-8")
 
-    sync_cmd.run(tmp_path)
-    assert (core.sources_dir(tmp_path) / "CLAUDE.md").read_text().strip() == "root"
-    assert (core.sources_dir(tmp_path) / "packages/foo/CLAUDE.md").read_text().strip() == "nested"
+    live_c = tmp_path / "CLAUDE.md"
+    live_a = tmp_path / "AGENTS.md"
+
+    content_c_before = live_c.read_text(encoding="utf-8")
+    content_a_before = live_a.read_text(encoding="utf-8")
+
+    mtime_c_before = live_c.stat().st_mtime
+    mtime_a_before = live_a.stat().st_mtime
+
+    # Small sleep to ensure time has passed if mtimes are updated
+    time.sleep(0.01)
+
+    result = sync_cmd.run(tmp_path)
+
+    assert set(result["healthy"]) == {"CLAUDE.md", "AGENTS.md"}
+    assert result["repaired"] == []
+    assert result["unresolved"] == []
+
+    assert live_c.read_text(encoding="utf-8") == content_c_before
+    assert live_a.read_text(encoding="utf-8") == content_a_before
+    assert live_c.stat().st_mtime == mtime_c_before
+    assert live_a.stat().st_mtime == mtime_a_before
+
+
+def test_sync_missing_shim_with_existing_backup(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "a\n"})
+    init_cmd.run(tmp_path)
+
+    live_file = tmp_path / "CLAUDE.md"
+    backup_file = core.sources_dir(tmp_path) / "CLAUDE.md"
+
+    # Remove the live file (shim)
+    live_file.unlink()
+
+    backup_content_before = backup_file.read_text(encoding="utf-8")
+
+    result = sync_cmd.run(tmp_path)
+
+    assert result["healthy"] == []
+    assert result["repaired"] == ["CLAUDE.md"]
+    assert result["unresolved"] == []
+
+    # Shim must be regenerated correctly
+    assert shim.is_shim_file(live_file)
+    # Backup must remain completely unchanged
+    assert backup_file.read_text(encoding="utf-8") == backup_content_before
+
+
+def test_sync_broken_shim_with_existing_backup(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "a\n"})
+    init_cmd.run(tmp_path)
+
+    live_file = tmp_path / "CLAUDE.md"
+    backup_file = core.sources_dir(tmp_path) / "CLAUDE.md"
+
+    # Overwrite live file with non-shim edits
+    live_file.write_text("user edits here\n", encoding="utf-8")
+
+    backup_content_before = backup_file.read_text(encoding="utf-8")
+
+    result = sync_cmd.run(tmp_path)
+
+    assert result["healthy"] == []
+    assert result["repaired"] == []
+    assert result["unresolved"] == [{"path": "CLAUDE.md", "reason": "backup_exists_and_live_has_edits"}]
+
+    # Overwritten non-shim text and backup must NOT be changed
+    assert live_file.read_text(encoding="utf-8") == "user edits here\n"
+    assert backup_file.read_text(encoding="utf-8") == backup_content_before
+
+
+def test_sync_missing_backup_warning(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "a\n"})
+    init_cmd.run(tmp_path)
+
+    live_file = tmp_path / "CLAUDE.md"
+    backup_file = core.sources_dir(tmp_path) / "CLAUDE.md"
+
+    # Delete backup
+    backup_file.unlink()
+
+    # Delete shim as well to force repair
+    live_file.unlink()
+
+    result = sync_cmd.run(tmp_path)
+
+    assert result["healthy"] == []
+    assert result["repaired"] == ["CLAUDE.md"]
+    assert result["unresolved"] == []
+    assert result["warnings"] == [{"path": "CLAUDE.md", "reason": "missing_backup"}]
+
+    # Live file is still repaired successfully (safe because it was missing)
+    assert shim.is_shim_file(live_file)
+
+
+def test_sync_uninitialized_repo(tmp_path):
+    import pytest
+    with pytest.raises(sync_cmd.SyncError) as exc_info:
+        sync_cmd.run(tmp_path)
+    assert "not initialized" in str(exc_info.value)
+
+
+def test_sync_empty_manifest_reports_no_registered_files(tmp_path):
+    core.ctx_dir(tmp_path).mkdir(parents=True)
+    core.manifest_path(tmp_path).write_text(
+        core.dump_manifest({
+            "project": {"name": "empty", "hub": ".ctx/SUPERCTX.md"},
+            "files": [],
+        }),
+        encoding="utf-8",
+    )
+    core.hub_path(tmp_path).write_text("# SUPERCTX - empty\n", encoding="utf-8")
+
+    result = sync_cmd.run(tmp_path)
+
+    assert result == {
+        "mode": "repair",
+        "healthy": [],
+        "repaired": [],
+        "unresolved": [],
+        "warnings": [],
+    }
+
+
+def test_sync_legacy_mode_is_not_available(tmp_path):
+    import pytest
+    from superctx import __main__ as cli
+
+    make_repo(tmp_path, {"CLAUDE.md": "a\n"})
+    init_cmd.run(tmp_path)
+    hub_before = core.hub_path(tmp_path).read_text(encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["sync", "--legacy", str(tmp_path)])
+
+    assert exc_info.value.code == 2
+    assert core.hub_path(tmp_path).read_text(encoding="utf-8") == hub_before
 
 
 # --- status -----------------------------------------------------------------

@@ -1,12 +1,15 @@
 ---
 name: superctx:sync
-description: Use when the user wants to centralize, refresh, or update the .ctx hub, or after editing CLAUDE.md / AGENTS.md / GEMINI.md and wanting those changes pulled into .ctx. Also use when /superctx:status reports drift.
+description: Use when the user wants to repair or regenerate SuperCtx shims, or when /superctx:status reports missing or broken registered shim files.
 ---
 
 # SuperCtx Sync
 
-Pull the tracked tool instruction files into the `.ctx/` hub. Inward only — tool files are read,
-never modified.
+Repair the tracked tool instruction shims from the canonical `.ctx/` hub.
+
+`/superctx:sync` does not pull tool-specific file contents into `.ctx/SUPERCTX.md`.
+It checks registered shim files, regenerates missing or broken shims when safe, and reports
+healthy, repaired, unresolved, and warning states.
 
 ## Run
 
@@ -14,14 +17,14 @@ never modified.
 PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx sync
 ```
 
-This snapshots each tracked file into `.ctx/sources/<same path>` and regenerates
-`.ctx/SUPERCTX.md` as a structured aggregation (each file's content under a `## From: <path>`
-provenance header).
+Use this after `/superctx:status` reports missing or broken shims, or after a user asks to
+restore generated tool instruction files that should point back to `.ctx/SUPERCTX.md`.
 
 ## Then report to the user
 
-- Which files were centralized, and any tracked-but-missing files.
-- Remind that `.ctx/SUPERCTX.md` is **generated** — to change it, edit the underlying tool files
-  and re-run sync, don't hand-edit the hub.
+- Which shims were already healthy.
+- Which shims were repaired.
+- Any unresolved files and the reason they could not be repaired safely.
+- Any warnings, especially missing inactive backups under `.ctx/sources/`.
 
 If the user has no `.ctx/` yet, run `/superctx:init` first.
