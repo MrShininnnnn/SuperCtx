@@ -13,8 +13,8 @@ Add a local candidate file to the SuperCtx manifest to begin tracking it.
 PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx add "$ARGUMENTS"
 ```
 
-The command takes the path to the instruction file to track. It updates `.ctx/manifest.toml`.
+The command takes the path to the instruction file to track.
 
 ## Then report to the user
 
-Present the result printed by the command. If the file was successfully added, tell the user that the file has been backed up, incorporated into `.ctx/SUPERCTX.md`, and replaced with a generated shim. Explain that the next step is to edit `.ctx/SUPERCTX.md` directly to update instructions.
+Present the result printed by the command. If the file was successfully added, tell the user that the original content has been backed up, incorporated into `.ctx/SUPERCTX.md`, and the file replaced with a generated shim. `.ctx/SUPERCTX.md` is now the canonical project context — agents read it through their shims automatically.
