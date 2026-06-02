@@ -35,7 +35,7 @@ def manifest_path(project_dir: Path) -> Path:
 def normalize(text: str) -> str:
     """Normalize newlines to \\n, strip trailing whitespace per line, ensure one trailing \\n.
 
-    Keeps drift detection from firing on cosmetic whitespace/EOL differences.
+    Keeps health checks from firing on cosmetic whitespace/EOL differences.
     """
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     out = "\n".join(line.rstrip() for line in lines).rstrip("\n")

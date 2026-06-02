@@ -2,7 +2,7 @@
 
 **All the context, in one place.**
 
-SuperCtx keeps AI coding assistants aligned on one shared project context. It centralizes project instructions from files like `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md` into a project-local `.ctx/` hub so teams can see what each tool knows and detect drift before it becomes confusing.
+SuperCtx keeps AI coding assistants aligned on one shared project context. It creates a project-local `.ctx/` hub from files like `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`, then keeps tool-specific instruction files as thin generated shims pointing back to that hub.
 
 Many coding tools use their own project instruction files:
 
@@ -13,7 +13,7 @@ GEMINI.md
 .github/copilot-instructions.md
 ```
 
-When you use more than one tool, those files can drift apart. SuperCtx gives the project one context layer and helps synchronize it across Claude Code, Codex, Gemini, Antigravity, Copilot, Cursor, and other AI coding tools.
+When you use more than one tool, those files can drift apart. SuperCtx gives the project one context layer and exposes it consistently across Claude Code, Codex, Gemini, Antigravity, Copilot, Cursor, and other AI coding tools.
 
 ## Why SuperCtx?
 
@@ -23,8 +23,8 @@ SuperCtx helps you:
 
 - reduce repeated copy-paste between tool-specific instruction files
 - keep context project-local instead of sending it to a cloud memory service
-- inspect which instruction files were pulled into the shared context hub
-- detect when a tool-specific file changed after the last sync
+- inspect which instruction files are connected to the shared context hub
+- detect missing or broken generated shims and missing inactive backups
 - dogfood project context workflows across Claude Code, Codex, Gemini, and related tools
 
 ## How It Works
@@ -60,7 +60,7 @@ SuperCtx scans the project directory during initialization and status reporting:
 1. **Verified Instruction Files** (Auto-connected):
    Root-level `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and hidden standard paths like `.claude/CLAUDE.md`, `.codex/AGENTS.md`, and `.github/copilot-instructions.md`. These are automatically added to `.ctx/manifest.toml`.
 2. **Supported Folder Candidates** (Surfaced, not auto-connected):
-   Known standard folder layouts like `.agents/rules/` and `agents/skills/` are surfaced as candidates for future sync.
+   Known standard folder layouts like `.agents/rules/` and `agents/skills/` are surfaced as candidates for future connection work.
 3. **Legacy or Uncertain Candidates** (Surfaced, not auto-connected):
    Legacy layouts such as `.agent/rules/` or `.agents/skills/` are reported.
 4. **Unverified Local Candidates** (Surfaced, not auto-connected):
@@ -139,6 +139,8 @@ The workflow:
 1. `/superctx:init` scans the project for known tool instruction files, populates `.ctx/SUPERCTX.md` with their contents, backs them up under `.ctx/sources/`, and replaces them with generated shims.
 2. `/superctx:status` reports structural integrity and health of the hub, registered shims, backups, and untracked candidates.
 
+If status reports missing or broken shims, run `/superctx:sync` to repair the generated shim files from the hub.
+
 Example status output:
 
 ```text
@@ -187,6 +189,8 @@ superctx status
 superctx add <path>
 ```
 
+`superctx sync` is a repair/recovery command for registered shims. It does not rewrite `.ctx/SUPERCTX.md` from tool-specific files.
+
 The same commands can be run without the console script:
 
 ```bash
@@ -200,13 +204,14 @@ python -m superctx add <path>
 
 SuperCtx is in early development. The first version focuses on one practical task:
 
-> Centralize project-specific AI coding context from multiple tool instruction files into one hub.
+> Keep project-specific AI coding context in one local hub and expose it through tool-specific shims.
 
 The current implementation includes:
 
 - `init`, `sync`, and `status`
 - auto-detection of known tool instruction files
-- a deterministic Python sync engine using the standard library
+- a deterministic Python engine using the standard library
+- shim repair for missing or broken registered instruction files
 - snapshot tests for generated demo project files
 - CI for the Python test suite
 - a Claude Code plugin manifest and marketplace catalog installable from GitHub
@@ -215,7 +220,7 @@ The current implementation includes:
 
 SuperCtx is:
 
-- a project-context synchronization tool
+- a project-context hub and shim tool
 - a shared context layer for AI coding tools
 - a way to reduce repeated copy-paste
 - a way to keep coding assistants aligned
@@ -238,9 +243,9 @@ SuperCtx is not:
 2. Keep context project-local.
 3. Start simple.
 4. Treat generated files as disposable.
-5. Avoid syncing secrets, credentials, caches, and local sessions.
+5. Avoid storing secrets, credentials, caches, and local sessions.
 6. Support one implementation path first, but design for many tools.
-7. Stay focused on context synchronization.
+7. Stay focused on shared project context and shim repair.
 
 ## Contributor / Development Setup
 

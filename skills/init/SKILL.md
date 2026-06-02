@@ -1,12 +1,13 @@
 ---
 name: superctx:init
-description: Use when setting up SuperCtx in a project for the first time, or when the user asks to create the .ctx hub, start centralizing context, or "initialize superctx". Also use when no .ctx/ directory exists yet but the user wants cross-tool context management.
+description: Use when setting up SuperCtx in a project for the first time, or when the user asks to create the .ctx hub, connect existing instruction files, or "initialize superctx". Also use when no .ctx/ directory exists yet but the user wants cross-tool context management.
 ---
 
 # SuperCtx Init
 
-Scaffold the canonical `.ctx/` hub for this project. The hub centralizes per-tool instruction
-files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, ...) so they stop drifting apart.
+Scaffold the canonical `.ctx/` hub for this project. SuperCtx imports existing per-tool
+instruction files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, ...), stores inactive backups,
+and replaces those files with generated shims pointing to the hub.
 
 ## Run
 

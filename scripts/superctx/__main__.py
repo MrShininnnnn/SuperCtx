@@ -82,14 +82,45 @@ def _cmd_init(project_dir: Path) -> int:
 
 
 def _cmd_sync(project_dir: Path) -> int:
-    result = sync_cmd.run(project_dir)
-    print("SuperCtx: regenerated .ctx/SUPERCTX.md")
-    for path in result["centralized"]:
-        print(f"  + centralized {path}")
-    for path in result["missing"]:
-        print(f"  ! tracked but not found: {path}")
-    if not result["centralized"]:
-        print("  (nothing centralized — no tracked files found)")
+    try:
+        result = sync_cmd.run(project_dir)
+    except sync_cmd.SyncError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    print("SuperCtx: sync completed.")
+    print()
+
+    if result["healthy"]:
+        print("Already healthy shims:")
+        for path in result["healthy"]:
+            print(f"  - {path}")
+        print()
+
+    if result["repaired"]:
+        print("Repaired shims:")
+        for path in result["repaired"]:
+            print(f"  + {path}")
+        print()
+
+    if result["unresolved"]:
+        print("Unresolved shims:")
+        for item in result["unresolved"]:
+            print(f"  ! {item['path']}: {item['reason']}")
+        print()
+
+    if result["warnings"]:
+        print("Warnings:")
+        for warning in result["warnings"]:
+            if warning["reason"] == "missing_backup":
+                print(f"  ! Backup missing for {warning['path']}; original content cannot be recovered.")
+            else:
+                print(f"  ! {warning['path']}: {warning['reason']}")
+        print()
+
+    if not any(result[key] for key in ("healthy", "repaired", "unresolved", "warnings")):
+        print("  (no registered files)")
+
     return 0
 
 

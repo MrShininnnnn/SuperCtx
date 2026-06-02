@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Reframed `/superctx:sync` as a hub-and-shim repair command that checks registered shims, repairs missing or broken shims when safe, warns on missing inactive backups, and never rewrites `.ctx/SUPERCTX.md` from tool-specific files.
 - Renamed the plugin skill command from `/superctx:setup` to `/superctx:init` to align with Claude Code command vocabulary and avoid confusion with Claude Code built-in `/init`.
 - Renamed `skills/setup/` folder to `skills/init/` to match the new command name.
 - Updated skill `name:` frontmatter fields to explicitly namespaced values (`superctx:init`, `superctx:sync`, `superctx:status`) to ensure Claude Code registers commands under the `superctx:` prefix.
