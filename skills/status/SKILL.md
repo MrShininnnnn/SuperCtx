@@ -1,12 +1,11 @@
 ---
 name: superctx:status
-description: Use when the user asks whether their tool instruction files have drifted from the .ctx hub, wants a SuperCtx status check, or asks what needs syncing. Also use to verify the hub is current before relying on it.
+description: Use when the user asks whether their tool instruction files have drifted from the .ctx hub, wants a SuperCtx status check, or asks about hub-and-shim health. Also use to verify the hub is current and shims are healthy before relying on them.
 ---
 
 # SuperCtx Status
 
-Report whether the tracked tool files match what's centralized in `.ctx/`. Read-only — never
-writes.
+Report structural integrity and health of the hub-and-shim v0.2 model. Read-only — never writes.
 
 ## Run
 
@@ -16,14 +15,16 @@ PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx status
 
 ## Then present the result
 
-Each tracked path reports one state:
+The command reports health states for the hub, registered shims, backups, and untracked candidates:
 
 | State | Meaning |
 |-------|---------|
-| `synced` | live file matches its `.ctx/sources/` snapshot |
-| `drifted` | live file changed since last sync (or never synced) |
-| `missing` | tracked in the manifest but the file is gone |
-| `untracked` | a known instruction file exists in the repo but isn't in the manifest |
+| `healthy` | All structural integrity checks passed for the hub, shim, or backup |
+| `missing_shim` | Registered file does not exist in the project |
+| `broken_shim` | Registered file exists but is not a valid generated shim pointing to the hub |
+| `missing_backup` | Original backup copy under `.ctx/sources/` is missing |
+| `missing_hub` | The canonical `.ctx/SUPERCTX.md` hub does not exist |
+| `empty_hub` | The canonical `.ctx/SUPERCTX.md` hub is empty |
+| `untracked_candidate` | Local convention candidate path matches a standard convention but is not tracked |
 
-If anything is `drifted` or `untracked`, recommend `/superctx:sync`. For `untracked`, recommend running `/superctx:add <path>` (or `superctx add <path>` on CLI) to begin tracking them. For `missing`, ask whether the file was intentionally
-removed.
+If shims or backups are broken or missing, instruct the user to run `/superctx:sync` to repair them. For untracked candidates, suggest running `/superctx:add <path>` to begin tracking them.

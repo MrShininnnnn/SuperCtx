@@ -137,17 +137,24 @@ Inside Claude Code:
 The workflow:
 
 1. `/superctx:init` scans the project for known tool instruction files, populates `.ctx/SUPERCTX.md` with their contents, backs them up under `.ctx/sources/`, and replaces them with generated shims.
-2. `/superctx:status` reports whether tracked files are synced, drifted, or missing, and lists any untracked standard files or candidates.
+2. `/superctx:status` reports structural integrity and health of the hub, registered shims, backups, and untracked candidates.
 
 Example status output:
 
 ```text
-Tracked files:
-  synced     CLAUDE.md
-  drifted    AGENTS.md
+Hub:
+- .ctx/SUPERCTX.md exists
 
-Untracked candidates:
-  ? .agy/ANTIGRAVITY.md     local convention candidate; not verified official support
+Registered files:
+- .claude/CLAUDE.md imports .ctx/SUPERCTX.md
+- .codex/AGENTS.md points to .ctx/SUPERCTX.md
+
+Backups:
+- .ctx/sources/.claude/CLAUDE.md
+- .ctx/sources/.codex/AGENTS.md
+
+Candidates:
+- .agy/ANTIGRAVITY.md untracked local candidate
 ```
 
 ## Command Discovery and Namespace Safety
@@ -167,7 +174,7 @@ After installing or reloading the plugin (`/reload-plugins`), you can verify com
 
 **Type `/status`** — only the Claude Code built-in status command should appear. SuperCtx does not register an unprefixed `/status` command.
 
-**Run `/superctx:status`** — SuperCtx reports diagnostics plus tracked files and whether they are synced, drifted, missing, or untracked.
+**Run `/superctx:status`** — SuperCtx reports diagnostics plus hub-and-shim health (hub existence, shim targets, backups, and untracked candidates).
 
 ## CLI Usage
 

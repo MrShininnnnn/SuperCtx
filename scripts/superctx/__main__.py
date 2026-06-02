@@ -94,79 +94,97 @@ def _cmd_sync(project_dir: Path) -> int:
 
 
 def _cmd_status(project_dir: Path) -> int:
-    diag = status_cmd.diagnostics(project_dir)
-    print("SuperCtx diagnostics:")
-    print(f"  version: {diag['version']}")
-    print(f"  plugin root: {diag['plugin_root']}")
-    print(f"  registry: {diag['registry']}")
+    try:
+        diag = status_cmd.diagnostics(project_dir)
+        print("SuperCtx diagnostics:")
+        print(f"  version: {diag['version']}")
+        print(f"  plugin root: {diag['plugin_root']}")
+        print(f"  registry: {diag['registry']}")
 
-    yes_no = lambda b: "yes" if b else "no"
-    print(f"  supports .claude/CLAUDE.md: {yes_no(diag['supports_claude_md'])}")
-    print(f"  supports .codex/AGENTS.md: {yes_no(diag['supports_codex_agents'])}")
-    print(f"  project has .claude/CLAUDE.md: {yes_no(diag['project_has_claude_md'])}")
-    print(f"  project has .codex/AGENTS.md: {yes_no(diag['project_has_codex_agents'])}")
-    print()
-
-    if diag["stale_install"]:
-        stale_convs = []
-        if diag["project_has_claude_md"] and not diag["supports_claude_md"]:
-            stale_convs.append("`.claude/CLAUDE.md`")
-        if diag["project_has_codex_agents"] and not diag["supports_codex_agents"]:
-            stale_convs.append("`.codex/AGENTS.md`")
-        convs_str = " and ".join(stale_convs)
-        support_it_them = "them" if len(stale_convs) > 1 else "it"
-        print(f"WARNING: Stale installation detected! The project uses {convs_str} but the active plugin registry does not support {support_it_them}.")
-        print("To update to the latest version, run:")
-        print("  /plugin marketplace update superctx")
-        print("  /plugin update superctx")
-        print("  /reload-plugins")
-        print()
-        print("If updating does not resolve the issue, reinstall the plugin:")
-        print("  /plugin uninstall superctx")
-        print("  /plugin install superctx@superctx")
-        print("  /reload-plugins")
+        yes_no = lambda b: "yes" if b else "no"
+        print(f"  supports .claude/CLAUDE.md: {yes_no(diag['supports_claude_md'])}")
+        print(f"  supports .codex/AGENTS.md: {yes_no(diag['supports_codex_agents'])}")
+        print(f"  project has .claude/CLAUDE.md: {yes_no(diag['project_has_claude_md'])}")
+        print(f"  project has .codex/AGENTS.md: {yes_no(diag['project_has_codex_agents'])}")
         print()
 
-    rows = status_cmd.run(project_dir)
-    if not rows:
+        if diag["stale_install"]:
+            stale_convs = []
+            if diag["project_has_claude_md"] and not diag["supports_claude_md"]:
+                stale_convs.append("`.claude/CLAUDE.md`")
+            if diag["project_has_codex_agents"] and not diag["supports_codex_agents"]:
+                stale_convs.append("`.codex/AGENTS.md`")
+            convs_str = " and ".join(stale_convs)
+            support_it_them = "them" if len(stale_convs) > 1 else "it"
+            print(f"WARNING: Stale installation detected! The project uses {convs_str} but the active plugin registry does not support {support_it_them}.")
+            print("To update to the latest version, run:")
+            print("  /plugin marketplace update superctx")
+            print("  /plugin update superctx")
+            print("  /reload-plugins")
+            print()
+            print("If updating does not resolve the issue, reinstall the plugin:")
+            print("  /plugin uninstall superctx")
+            print("  /plugin install superctx@superctx")
+            print("  /reload-plugins")
+            print()
+
+        rows = status_cmd.run(project_dir)
+    except status_cmd.StatusError:
         print("SuperCtx: no tracked files. Run /superctx:init first.")
         return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
-    tracked_rows = [r for r in rows if r["state"] in ("synced", "drifted", "missing")]
-    untracked_verified_rows = [r for r in rows if r["state"] == "untracked"]
-    candidate_rows = [r for r in rows if r["state"] == "untracked_candidate"]
+    # 1. Print Hub Section
+    hub_row = next((r for r in rows if r["kind"] == "hub"), None)
+    print("Hub:")
+    if hub_row:
+        if hub_row["state"] == "healthy":
+            print(f"- {hub_row['path']} exists")
+        elif hub_row["state"] == "missing_hub":
+            print(f"- {hub_row['path']} missing")
+        elif hub_row["state"] == "empty_hub":
+            print(f"- {hub_row['path']} empty")
+    else:
+        print("- (no hub info)")
+    print()
 
-    if tracked_rows:
-        print("Tracked files:")
-        for row in tracked_rows:
-            print(f"  {row['state']:<10} {row['path']}")
+    # 2. Print Registered files Section
+    shim_rows = [r for r in rows if r["kind"] == "shim"]
+    print("Registered files:")
+    if shim_rows:
+        for row in shim_rows:
+            if row["state"] == "healthy":
+                verb = "imports" if row["import_syntax"] == "claude-at-import" else "points to"
+                print(f"- {row['path']} {verb} .ctx/SUPERCTX.md")
+            else:
+                print(f"- {row['path']} shim missing or broken")
+    else:
+        print("- (none)")
+    print()
 
-    if untracked_verified_rows:
-        if tracked_rows:
-            print()
-        print("Untracked instruction files (standard conventions):")
-        for row in untracked_verified_rows:
-            print(f"  untracked  {row['path']}")
+    # 3. Print Backups Section
+    backup_rows = [r for r in rows if r["kind"] == "backup"]
+    print("Backups:")
+    if backup_rows:
+        for row in backup_rows:
+            if row["state"] == "healthy":
+                print(f"- {row['path']}")
+            else:
+                print(f"- {row['path']} missing")
+    else:
+        print("- (none)")
+    print()
 
+    # 4. Print Candidates Section
+    candidate_rows = [r for r in rows if r["kind"] == "candidate"]
     if candidate_rows:
-        if tracked_rows or untracked_verified_rows:
-            print()
-        print("Untracked candidates:")
+        print("Candidates:")
         for row in candidate_rows:
-            note_suffix = f"; {row['note']}" if row["note"] else ""
-            label_text = f"{row['label']}{note_suffix}"
-            print(f"  ? {row['path']:<24} {label_text}")
-
-    file_cands = [r["path"] for r in candidate_rows if (project_dir / r["path"]).is_file()]
-    if file_cands:
+            print(f"- {row['path']} untracked local candidate")
         print()
-        print("To track local candidate files, run:")
-        for cand_path in file_cands:
-            print(f"  /superctx:add {cand_path}")
 
-    if any(r["state"] in ("drifted", "untracked") for r in rows):
-        print()
-        print("Run /superctx:sync to re-centralize.")
     return 0
 
 
