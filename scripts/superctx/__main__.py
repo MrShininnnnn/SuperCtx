@@ -88,14 +88,13 @@ def _cmd_sync(project_dir: Path) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    print("SuperCtx: sync completed.")
-    print()
-
-    if result["healthy"]:
-        print("Already healthy shims:")
-        for path in result["healthy"]:
-            print(f"  - {path}")
-        print()
+    has_problems = result["unresolved"] or result["warnings"]
+    if not has_problems and not result["repaired"]:
+        if result["healthy"]:
+            print("All SuperCtx shims are healthy; no repair needed.")
+        else:
+            print("  (no registered files)")
+        return 0
 
     if result["repaired"]:
         print("Repaired shims:")
@@ -118,7 +117,7 @@ def _cmd_sync(project_dir: Path) -> int:
                 print(f"  ! {warning['path']}: {warning['reason']}")
         print()
 
-    if not any(result[key] for key in ("healthy", "repaired", "unresolved", "warnings")):
+    if not any(result[key] for key in ("repaired", "unresolved", "warnings")):
         print("  (no registered files)")
 
     return 0
@@ -167,53 +166,51 @@ def _cmd_status(project_dir: Path) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # 1. Print Hub Section
     hub_row = next((r for r in rows if r["kind"] == "hub"), None)
-    print("Hub:")
-    if hub_row:
-        if hub_row["state"] == "healthy":
-            print(f"- {hub_row['path']} exists")
-        elif hub_row["state"] == "missing_hub":
-            print(f"- {hub_row['path']} missing")
-        elif hub_row["state"] == "empty_hub":
-            print(f"- {hub_row['path']} empty")
-    else:
-        print("- (no hub info)")
-    print()
-
-    # 2. Print Registered files Section
     shim_rows = [r for r in rows if r["kind"] == "shim"]
-    print("Registered files:")
-    if shim_rows:
-        for row in shim_rows:
-            if row["state"] == "healthy":
-                verb = "imports" if row["import_syntax"] == "claude-at-import" else "points to"
-                print(f"- {row['path']} {verb} .ctx/SUPERCTX.md")
-            else:
-                print(f"- {row['path']} shim missing or broken")
-    else:
-        print("- (none)")
-    print()
-
-    # 3. Print Backups Section
     backup_rows = [r for r in rows if r["kind"] == "backup"]
-    print("Backups:")
-    if backup_rows:
-        for row in backup_rows:
-            if row["state"] == "healthy":
-                print(f"- {row['path']}")
-            else:
-                print(f"- {row['path']} missing")
-    else:
-        print("- (none)")
-    print()
-
-    # 4. Print Candidates Section
     candidate_rows = [r for r in rows if r["kind"] == "candidate"]
+
+    hub_healthy = hub_row and hub_row["state"] == "healthy"
+    shims_healthy = all(r["state"] == "healthy" for r in shim_rows)
+    backups_healthy = all(r["state"] == "healthy" for r in backup_rows)
+    all_healthy = hub_healthy and shims_healthy and backups_healthy and not candidate_rows
+
+    if all_healthy:
+        print("All SuperCtx context links are healthy.")
+        return 0
+
+    # Hub problems
+    if hub_row and hub_row["state"] != "healthy":
+        if hub_row["state"] == "missing_hub":
+            print(f"Hub missing: {hub_row['path']}")
+        elif hub_row["state"] == "empty_hub":
+            print(f"Hub empty: {hub_row['path']}")
+        print()
+
+    # Shim problems
+    broken_shims = [r for r in shim_rows if r["state"] != "healthy"]
+    if broken_shims:
+        print("Shim issues:")
+        for row in broken_shims:
+            print(f"  ! {row['path']} — shim missing or broken")
+        print("  Run /superctx:sync to repair.")
+        print()
+
+    # Backup problems
+    missing_backups = [r for r in backup_rows if r["state"] != "healthy"]
+    if missing_backups:
+        print("Missing backups:")
+        for row in missing_backups:
+            print(f"  ! {row['path']}")
+        print()
+
+    # Candidates
     if candidate_rows:
-        print("Candidates:")
+        print("Untracked candidates:")
         for row in candidate_rows:
-            print(f"- {row['path']} untracked local candidate")
+            print(f"  ? {row['path']}")
+            print(f"    Run /superctx:add {row['path']} to connect it.")
         print()
 
     return 0

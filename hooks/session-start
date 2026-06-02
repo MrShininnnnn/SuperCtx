@@ -9,8 +9,6 @@ set -euo pipefail
 
 if [[ -f ".ctx/SUPERCTX.md" || -f ".ctx/manifest.toml" ]]; then
   cat <<'EOF'
-This project uses SuperCtx. Centralized cross-tool context is in `.ctx/SUPERCTX.md`
-(aggregated from CLAUDE.md, AGENTS.md, GEMINI.md, and other tool instruction files). Treat it as
-the source of truth for shared project context, and run `/superctx:status` to check for drift.
+SuperCtx is active. `.ctx/SUPERCTX.md` is the canonical shared project context. Registered tool instruction files are generated shims pointing to it. Use `/superctx:status` to check health.
 EOF
 fi
