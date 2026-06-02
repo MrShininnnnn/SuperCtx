@@ -87,7 +87,7 @@ def test_generated_sources_are_ignored_inside_ctx(tmp_path):
 
     assert core.normalize(
         (core.ctx_dir(project) / ".gitignore").read_text(encoding="utf-8")
-    ) == "# Raw per-tool snapshots are a local drift-detection cache.\nsources/\n"
+    ) == "# Inactive backup storage for original instruction files.\nsources/\n"
     assert (core.sources_dir(project) / "CLAUDE.md").is_file()
     assert (core.sources_dir(project) / "AGENTS.md").is_file()
     assert (core.sources_dir(project) / "GEMINI.md").is_file()

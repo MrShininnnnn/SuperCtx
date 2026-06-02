@@ -19,60 +19,62 @@ from . import add as add_cmd
 def _cmd_init(project_dir: Path) -> int:
     result = init_cmd.run(project_dir)
     if not result["created"]:
-        print(f"SuperCtx: {result['ctx_dir']} already exists — no changes made.")
-        return 0
-    print(f"SuperCtx initialized {result['ctx_dir']}.")
+        if result.get("partially_migrated"):
+            print("SuperCtx: This project is partially migrated.")
+            print("The following shims are missing or broken:")
+            for shim in result["broken_shims"]:
+                print(f"  ! {shim}")
+            print()
+            return 0
+        else:
+            print("SuperCtx: Already initialized.")
+            return 0
+
+    print("SuperCtx initialized this repo.")
     print()
 
-    disc = result["discovery"]
-    verified = disc["verified_instruction_file"]
-    if verified:
-        print("Auto-connected instruction files:")
-        for c in verified:
-            tools_str = ", ".join(c.get("tools", []))
-            print(f"  ✓ {c['path']:<24} {tools_str}")
-        print()
-    else:
-        print("No verified instruction files were auto-connected.")
+    connected = result.get("connected", [])
+    if connected:
+        print("Connected:")
+        for file in connected:
+            print(f"- {file}")
         print()
 
-    sup_folders = disc["supported_folder_candidate"]
-    if sup_folders:
-        print("Found supported folder candidates:")
-        for cand in sup_folders:
-            print(f"  ? {cand['path']:<24} {cand['label']}; {cand['note']}")
+    hub = result.get("hub")
+    if hub:
+        print("Hub:")
+        print(f"- {hub}")
         print()
 
-    legacy_cands = disc["legacy_or_uncertain_folder_candidate"]
-    if legacy_cands:
-        print("Found legacy or uncertain candidates:")
-        for cand in legacy_cands:
-            print(f"  ? {cand['path']:<24} {cand['label']}; {cand['note']}")
+    backups = result.get("backups", [])
+    if backups:
+        print("Backups:")
+        for backup in backups:
+            print(f"- {backup}")
         print()
 
-    unverified_cands = disc["unverified_local_candidate"]
-    if unverified_cands:
-        print("Found unverified local candidates:")
-        for cand in unverified_cands:
-            print(f"  ? {cand['path']:<24} {cand['label']}; {cand['note']}")
+    failed_shims = result.get("failed_shims", [])
+    if failed_shims:
+        print("WARNING: Some shims could not be applied due to pre-existing backups:")
+        for shim in failed_shims:
+            print(f"  ! {shim}")
+        print("To overwrite the backups and apply the shims, run the appropriate add command with force.")
         print()
 
-    file_cands = [
-        c["path"] for c in (sup_folders + legacy_cands + unverified_cands)
-        if (project_dir / c["path"]).is_file()
-    ]
+    untracked = result.get("untracked", [])
+    if untracked:
+        print("Untracked candidates:")
+        for cand in untracked:
+            print(f"- {cand}")
+        print()
+
+    file_cands = [c for c in untracked if (project_dir / c).is_file()]
     if file_cands:
         print("To track candidate files, run:")
         for cand_path in file_cands:
             print(f"  /superctx:add {cand_path}")
         print()
-        print("or:")
-        for cand_path in file_cands:
-            print(f"  superctx add {cand_path}")
-        print()
 
-    print("Next step:")
-    print("  Run /superctx:sync to centralize tracked instruction files.")
     return 0
 
 

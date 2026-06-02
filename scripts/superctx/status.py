@@ -13,7 +13,7 @@ from pathlib import Path
 import os
 import json
 
-from . import core, registry
+from . import core, registry, shim
 
 
 def resolve_version(module_path: Path | None = None) -> dict:
@@ -126,6 +126,8 @@ def run(project_dir: Path) -> list[dict]:
         snapshot = core.sources_dir(project_dir) / rel
         if not live.is_file():
             state = "missing"
+        elif shim.is_shim_file(live):
+            state = "synced"
         elif not snapshot.is_file():
             state = "drifted"  # tracked but never centralized
         elif core.content_hash(core.read_text(live)) == core.content_hash(core.read_text(snapshot)):
