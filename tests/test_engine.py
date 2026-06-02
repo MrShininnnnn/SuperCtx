@@ -639,6 +639,37 @@ def test_add_transactional_rollback(tmp_path, monkeypatch):
     # Live file is untouched (not shimmed)
     assert live_file.read_text(encoding="utf-8") == "some original content\n"
 
+
+def test_add_transactional_rollback_restores_files_after_shim_write(tmp_path, monkeypatch):
+    import pytest
+    from superctx import add as add_cmd
+    from superctx import shim
+    init_cmd.run(tmp_path)
+
+    live_file = tmp_path / "somefile.md"
+    live_file.write_text("some original content\n", encoding="utf-8")
+    backup_file = core.sources_dir(tmp_path) / "somefile.md"
+
+    orig_manifest = core.manifest_path(tmp_path).read_text(encoding="utf-8")
+    orig_hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    original_apply_shim = shim.apply_shim
+
+    def apply_then_fail(*args, **kwargs):
+        original_apply_shim(*args, **kwargs)
+        raise RuntimeError("failure after shim write")
+
+    monkeypatch.setattr(shim, "apply_shim", apply_then_fail)
+
+    with pytest.raises(add_cmd.AddError) as exc_info:
+        add_cmd.run(tmp_path, "somefile.md")
+    assert "failure after shim write" in str(exc_info.value)
+
+    assert core.manifest_path(tmp_path).read_text(encoding="utf-8") == orig_manifest
+    assert core.hub_path(tmp_path).read_text(encoding="utf-8") == orig_hub
+    assert live_file.read_text(encoding="utf-8") == "some original content\n"
+    assert not backup_file.exists()
+
+
 def test_init_manifest_decode_error(tmp_path):
     make_repo(tmp_path, {
         "CLAUDE.md": "x\n",

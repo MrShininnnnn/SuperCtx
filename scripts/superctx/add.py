@@ -117,6 +117,10 @@ def run(project_dir: Path, input_path: str) -> AddResult:
     # 9. Write with transactional rollback on failure
     orig_manifest_content = manifest_path.read_text(encoding="utf-8")
     orig_hub_content = hub_path.read_text(encoding="utf-8") if hub_path.is_file() else None
+    live_existed_before = resolved_file_path.is_file()
+    orig_live_content = resolved_file_path.read_text(encoding="utf-8") if live_existed_before else None
+    backup_existed_before = backup_file.is_file()
+    orig_backup_content = backup_file.read_text(encoding="utf-8") if backup_existed_before else None
 
     try:
         if new_hub_content is not None:
@@ -136,6 +140,18 @@ def run(project_dir: Path, input_path: str) -> AddResult:
             hub_path.write_text(orig_hub_content, encoding="utf-8")
         elif hub_path.is_file():
             hub_path.unlink()
+
+        # Rollback live file and backup side effects from apply_shim.
+        if live_existed_before:
+            resolved_file_path.write_text(orig_live_content or "", encoding="utf-8")
+        elif resolved_file_path.is_file():
+            resolved_file_path.unlink()
+
+        if backup_existed_before:
+            backup_file.parent.mkdir(parents=True, exist_ok=True)
+            backup_file.write_text(orig_backup_content or "", encoding="utf-8")
+        elif backup_file.is_file():
+            backup_file.unlink()
 
         if isinstance(e, AddError):
             raise e
