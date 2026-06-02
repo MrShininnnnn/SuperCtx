@@ -78,5 +78,7 @@ def dump_manifest(data: dict) -> str:
         lines.append("[[files]]")
         lines.append(f'path = {_toml_str(entry["path"])}')
         lines.append(f'tools = {_toml_array(entry.get("tools", []))}')
+        if "note" in entry:
+            lines.append(f'note = {_toml_str(entry["note"])}')
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"

@@ -471,6 +471,7 @@ def test_add_validations_missing_and_directories(tmp_path):
 
 def test_add_local_candidate_and_convention(tmp_path):
     from superctx import add as add_cmd
+    from superctx.shim import is_shim_file
     init_cmd.run(tmp_path)
 
     # Add unrecognized candidate (.agy/ANTIGRAVITY.md)
@@ -482,10 +483,21 @@ def test_add_local_candidate_and_convention(tmp_path):
     assert res.status == "added"
     assert res.tools == []
     assert ".agy/ANTIGRAVITY.md" in res.message
+    assert "Edit .ctx/SUPERCTX.md directly to update instructions" in res.message
 
     # Check manifest
     manifest = core.load_manifest(tmp_path)
-    assert {"path": ".agy/ANTIGRAVITY.md", "tools": []} in manifest["files"]
+    entry_agy = next(f for f in manifest["files"] if f["path"] == ".agy/ANTIGRAVITY.md")
+    assert entry_agy["tools"] == []
+    assert entry_agy["note"] == "user-confirmed local convention; not verified official path"
+
+    # Check that it got shimmed and backed up
+    assert is_shim_file(agy_file) is True
+    assert (core.sources_dir(tmp_path) / ".agy/ANTIGRAVITY.md").read_text() == "agy\n"
+
+    # Check hub has the incorporated content
+    hub_content = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert "## From: .agy/ANTIGRAVITY.md\n\nagy" in hub_content
 
     # Add known convention (.github/copilot-instructions.md)
     copilot_file = tmp_path / ".github/copilot-instructions.md"
@@ -497,13 +509,135 @@ def test_add_local_candidate_and_convention(tmp_path):
     assert res_conv.tools == ["GitHub Copilot"]
 
     manifest2 = core.load_manifest(tmp_path)
-    assert {"path": ".github/copilot-instructions.md", "tools": ["GitHub Copilot"]} in manifest2["files"]
+    entry_copilot = next(f for f in manifest2["files"] if f["path"] == ".github/copilot-instructions.md")
+    assert entry_copilot["tools"] == ["GitHub Copilot"]
+    assert "note" not in entry_copilot
 
-    # Duplicate add check (should be idempotent)
+    assert is_shim_file(copilot_file) is True
+    assert (core.sources_dir(tmp_path) / ".github/copilot-instructions.md").read_text() == "copilot\n"
+
+    hub_content2 = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert "## From: .github/copilot-instructions.md  (GitHub Copilot)\n\ncopilot" in hub_content2
+
+    # Duplicate add check (should be idempotent, shouldn't append section again or modify backup)
     res_dup = add_cmd.run(tmp_path, ".agy/ANTIGRAVITY.md")
     assert res_dup.status == "already_tracked"
     assert res_dup.tools == []
     assert "is already tracked" in res_dup.message
+
+    # Verify no duplicate section in hub (should only appear once)
+    hub_content_final = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert hub_content_final.count("## From: .agy/ANTIGRAVITY.md") == 1
+    # Verify backup is still correct
+    assert (core.sources_dir(tmp_path) / ".agy/ANTIGRAVITY.md").read_text() == "agy\n"
+
+
+def test_add_backup_collision(tmp_path):
+    import pytest
+    from superctx import add as add_cmd
+    init_cmd.run(tmp_path)
+
+    # Create pre-existing backup
+    backup_file = core.sources_dir(tmp_path) / "somefile.md"
+    backup_file.parent.mkdir(parents=True, exist_ok=True)
+    backup_file.write_text("backup content\n", encoding="utf-8")
+
+    # Create live file (not a shim)
+    live_file = tmp_path / "somefile.md"
+    live_file.write_text("live content\n", encoding="utf-8")
+
+    # Try to add it -> should raise AddError
+    with pytest.raises(add_cmd.AddError) as exc_info:
+        add_cmd.run(tmp_path, "somefile.md")
+    assert "backup already exists" in str(exc_info.value).lower()
+    assert "manually remove or rename the pre-existing backup file" in str(exc_info.value)
+
+
+def test_add_already_shimmed_with_backup(tmp_path):
+    from superctx import add as add_cmd
+    from superctx.shim import is_shim_file, generate_shim
+    init_cmd.run(tmp_path)
+
+    # Set up an untracked, already-shimmed file
+    # (Since it's not tracked, it is not in manifest.toml)
+    live_file = tmp_path / "somefile.md"
+    live_file.write_text(generate_shim("somefile.md", "plain-pointer"), encoding="utf-8")
+
+    # Setup the backup file (original content)
+    backup_file = core.sources_dir(tmp_path) / "somefile.md"
+    backup_file.parent.mkdir(parents=True, exist_ok=True)
+    backup_file.write_text("original non-shim content\n", encoding="utf-8")
+
+    # Call add -> should succeed
+    res = add_cmd.run(tmp_path, "somefile.md")
+    assert res.status == "added"
+
+    # Check that manifest is updated
+    manifest = core.load_manifest(tmp_path)
+    assert any(f["path"] == "somefile.md" for f in manifest["files"])
+
+    # Check that the shim was regenerated
+    assert is_shim_file(live_file) is True
+
+    # Check that the hub incorporated the content from the BACKUP, not the SHIM text
+    hub_content = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert "original non-shim content" in hub_content
+    assert "Generated by SuperCtx" not in hub_content  # shouldn't have shim text in hub
+
+
+def test_add_already_shimmed_no_backup(tmp_path):
+    from superctx import add as add_cmd
+    from superctx.shim import is_shim_file, generate_shim
+    init_cmd.run(tmp_path)
+
+    live_file = tmp_path / "somefile.md"
+    live_file.write_text(generate_shim("somefile.md", "plain-pointer"), encoding="utf-8")
+
+    # No backup exists
+    res = add_cmd.run(tmp_path, "somefile.md")
+    assert res.status == "added"
+
+    # Check that manifest is updated
+    manifest = core.load_manifest(tmp_path)
+    assert any(f["path"] == "somefile.md" for f in manifest["files"])
+
+    # Check that the shim is present
+    assert is_shim_file(live_file) is True
+
+    # Check that SUPERCTX.md does NOT have any new section for it (since original content is empty)
+    hub_content = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert "## From: somefile.md" not in hub_content
+
+
+def test_add_transactional_rollback(tmp_path, monkeypatch):
+    import pytest
+    from superctx import add as add_cmd
+    from superctx import shim
+    init_cmd.run(tmp_path)
+
+    live_file = tmp_path / "somefile.md"
+    live_file.write_text("some original content\n", encoding="utf-8")
+
+    # Save original manifest and hub content
+    orig_manifest = core.manifest_path(tmp_path).read_text(encoding="utf-8")
+    orig_hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
+
+    # Mock apply_shim to raise an exception or fail
+    def mock_apply_shim(*args, **kwargs):
+        return {"shimmed": False, "reason": "mocked failure"}
+    monkeypatch.setattr(shim, "apply_shim", mock_apply_shim)
+
+    # Call add -> should fail and roll back manifest and hub
+    with pytest.raises(add_cmd.AddError) as exc_info:
+        add_cmd.run(tmp_path, "somefile.md")
+    assert "Failed to apply shim: mocked failure" in str(exc_info.value)
+
+    # Assert rollback
+    assert core.manifest_path(tmp_path).read_text(encoding="utf-8") == orig_manifest
+    assert core.hub_path(tmp_path).read_text(encoding="utf-8") == orig_hub
+
+    # Live file is untouched (not shimmed)
+    assert live_file.read_text(encoding="utf-8") == "some original content\n"
 
 def test_init_manifest_decode_error(tmp_path):
     make_repo(tmp_path, {
