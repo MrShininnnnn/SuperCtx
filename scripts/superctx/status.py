@@ -1,10 +1,13 @@
-"""`superctx status` — read-only drift report comparing live tool files to their snapshots.
+"""`superctx status` — read-only hub-and-shim health check report.
 
-States per path:
-  synced    — live file matches its .ctx/sources/ snapshot
-  drifted   — live file differs from snapshot (or has never been synced)
-  missing   — tracked in the manifest but the live file is gone
-  untracked — a known instruction-file convention exists in the repo but isn't in the manifest
+Health states:
+  healthy             — all structural integrity checks passed for hub, shim, or backup
+  missing_shim        — registered file does not exist in the project
+  broken_shim         — registered file is not a valid generated shim pointing to the hub
+  missing_backup      — original backup copy under .ctx/sources/ is missing
+  missing_hub         — the canonical .ctx/SUPERCTX.md hub does not exist
+  empty_hub           — the canonical .ctx/SUPERCTX.md hub is empty
+  untracked_candidate — local convention candidate path matches standard convention but is not tracked
 """
 
 from __future__ import annotations
