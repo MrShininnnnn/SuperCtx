@@ -111,7 +111,7 @@ def run(project_dir: Path, input_path: str) -> AddResult:
             orig_hub_text = f"# SUPERCTX — {manifest.get('project', {}).get('name', 'Project')}\n"
 
         suffix = f"  ({', '.join(tools)})" if tools else ""
-        section = f"\n## From: {rel_path_str}{suffix}\n\n{original_content.strip()}\n"
+        section = f"\n## From: {rel_path_str}{suffix}\n\n{core.normalize(original_content).strip()}\n"
         new_hub_content = orig_hub_text.rstrip() + "\n" + section
 
     # 9. Write with transactional rollback on failure
