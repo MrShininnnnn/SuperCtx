@@ -45,6 +45,14 @@ GEMINI.md  ─┘
 
 `SUPERCTX.md` is a structured aggregation of the source instruction files with provenance for each source. Your original tool files are never modified.
 
+### Agent-Native Bootstrapping
+
+SuperCtx includes a built-in agent reference skill, `/superctx:using-superctx`. When Claude Code enters a SuperCtx-enabled repository, this skill orientates the agent on the current project's context boundaries and active files.
+
+In the current release, SuperCtx uses an **inward-sync** model: agents and users edit the underlying tool-specific instruction files (e.g. `CLAUDE.md`, `.codex/AGENTS.md`) and run `/superctx:sync` to regenerate the aggregated `.ctx/SUPERCTX.md` hub. In the planned v0.2 hub-and-shim release, this will transition to a central-hub model where agents update `.ctx/SUPERCTX.md` directly and tool-specific files are generated shims.
+
+In all versions, SuperCtx is designed to be agent-native: agents should invoke the appropriate slash commands rather than telling users to edit `.ctx/manifest.toml` manually in the happy path.
+
 ## What SuperCtx Auto-Detects
 
 SuperCtx scans the project directory during initialization and status reporting:
