@@ -49,9 +49,7 @@ The `.ctx/` folder is the centralized hub for project context. SuperCtx makes `.
 
 SuperCtx includes a built-in agent reference skill, `/superctx:using-superctx`. Run it when working in a SuperCtx-enabled repository to orient Claude Code on the current project's context boundaries and active files.
 
-In this release, SuperCtx uses a **hub-and-shim** model: agents and users edit the shared project context in `.ctx/SUPERCTX.md` directly. Tool-specific files are generated shims that point back to the hub.
-
-In all versions, SuperCtx is designed to be agent-native: agents should invoke the appropriate slash commands rather than telling users to edit `.ctx/manifest.toml` manually in the happy path.
+When SuperCtx is active, the agent uses `.ctx/SUPERCTX.md` as shared project context through generated shims. You normally ask the agent to update project context naturally instead of managing Markdown or TOML by hand.
 
 ## What SuperCtx Auto-Detects
 
