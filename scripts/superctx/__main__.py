@@ -126,17 +126,6 @@ def _cmd_sync(project_dir: Path) -> int:
 def _cmd_status(project_dir: Path) -> int:
     try:
         diag = status_cmd.diagnostics(project_dir)
-        print("SuperCtx diagnostics:")
-        print(f"  version: {diag['version']}")
-        print(f"  plugin root: {diag['plugin_root']}")
-        print(f"  registry: {diag['registry']}")
-
-        yes_no = lambda b: "yes" if b else "no"
-        print(f"  supports .claude/CLAUDE.md: {yes_no(diag['supports_claude_md'])}")
-        print(f"  supports .codex/AGENTS.md: {yes_no(diag['supports_codex_agents'])}")
-        print(f"  project has .claude/CLAUDE.md: {yes_no(diag['project_has_claude_md'])}")
-        print(f"  project has .codex/AGENTS.md: {yes_no(diag['project_has_codex_agents'])}")
-        print()
 
         if diag["stale_install"]:
             stale_convs = []

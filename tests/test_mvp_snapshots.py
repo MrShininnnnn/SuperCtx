@@ -94,6 +94,8 @@ def test_demo_project_cli_round_trip(tmp_path):
     assert "All SuperCtx context links are healthy" in status_result.stdout
     assert "Hub:" not in status_result.stdout
     assert "Registered files:" not in status_result.stdout
+    assert "SuperCtx diagnostics:" not in status_result.stdout
+    assert "plugin root:" not in status_result.stdout
 
 
 def test_generated_sources_are_ignored_inside_ctx(tmp_path):
