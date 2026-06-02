@@ -89,11 +89,13 @@ def test_init_detects_hidden_instruction_files(tmp_path):
         "AGENTS.md"
     }
 
-    # Verify status reports them as synced (after we check in sync they are resolved from backups)
-    status_rows = [r for r in status_cmd.run(tmp_path) if r["state"] != "untracked_candidate"]
-    assert len(status_rows) == 3
-    for row in status_rows:
-        assert row["state"] == "synced"
+    # Verify status reports them as healthy (after we check in sync they are resolved from backups)
+    status_rows = status_cmd.run(tmp_path)
+    assert len(status_rows) == 8
+    assert next(r for r in status_rows if r["kind"] == "hub")["state"] == "healthy"
+    assert len([r for r in status_rows if r["kind"] == "shim" and r["state"] == "healthy"]) == 3
+    assert len([r for r in status_rows if r["kind"] == "backup" and r["state"] == "healthy"]) == 3
+    assert len([r for r in status_rows if r["kind"] == "candidate"]) == 1
 
 
 def test_init_is_idempotent(tmp_path):
@@ -174,49 +176,142 @@ def test_sync_mirrors_nested_same_basename(tmp_path):
 
 # --- status -----------------------------------------------------------------
 
-def states(tmp_path) -> dict[str, str]:
-    return {row["path"]: row["state"] for row in status_cmd.run(tmp_path)}
+def test_status_healthy_shims(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "a\n", "AGENTS.md": "b\n"})
+    init_cmd.run(tmp_path)
+
+    rows = status_cmd.run(tmp_path)
+
+    # Assert Hub
+    hub_row = next(r for r in rows if r["kind"] == "hub")
+    assert hub_row["path"] == ".ctx/SUPERCTX.md"
+    assert hub_row["state"] == "healthy"
+
+    # Assert Shims
+    claude_shim = next(r for r in rows if r["kind"] == "shim" and r["path"] == "CLAUDE.md")
+    assert claude_shim["state"] == "healthy"
+    assert claude_shim["import_syntax"] == "claude-at-import"
+
+    agents_shim = next(r for r in rows if r["kind"] == "shim" and r["path"] == "AGENTS.md")
+    assert agents_shim["state"] == "healthy"
+    assert agents_shim["import_syntax"] == "plain-pointer"
+
+    # Assert Backups
+    claude_backup = next(r for r in rows if r["kind"] == "backup" and r["source"] == "CLAUDE.md")
+    assert claude_backup["path"] == ".ctx/sources/CLAUDE.md"
+    assert claude_backup["state"] == "healthy"
+
+    agents_backup = next(r for r in rows if r["kind"] == "backup" and r["source"] == "AGENTS.md")
+    assert agents_backup["path"] == ".ctx/sources/AGENTS.md"
+    assert agents_backup["state"] == "healthy"
 
 
-def test_status_synced_then_drifted(tmp_path):
+def test_status_broken_and_missing_shims(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "a\n", "AGENTS.md": "b\n"})
+    init_cmd.run(tmp_path)
+
+    # Break CLAUDE.md (overwrite shim)
+    (tmp_path / "CLAUDE.md").write_text("manual edit\n", encoding="utf-8")
+    # Delete AGENTS.md
+    (tmp_path / "AGENTS.md").unlink()
+
+    rows = status_cmd.run(tmp_path)
+
+    claude_shim = next(r for r in rows if r["kind"] == "shim" and r["path"] == "CLAUDE.md")
+    assert claude_shim["state"] == "broken_shim"
+
+    agents_shim = next(r for r in rows if r["kind"] == "shim" and r["path"] == "AGENTS.md")
+    assert agents_shim["state"] == "missing_shim"
+
+
+def test_status_missing_backup(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "a\n"})
     init_cmd.run(tmp_path)
-    sync_cmd.run(tmp_path)
-    assert states(tmp_path)["CLAUDE.md"] == "synced"
 
-    (tmp_path / "CLAUDE.md").write_text("a changed\n", encoding="utf-8")
-    assert states(tmp_path)["CLAUDE.md"] == "drifted"
+    # Delete backup
+    (core.sources_dir(tmp_path) / "CLAUDE.md").unlink()
+
+    rows = status_cmd.run(tmp_path)
+
+    backup_row = next(r for r in rows if r["kind"] == "backup" and r["source"] == "CLAUDE.md")
+    assert backup_row["state"] == "missing_backup"
 
 
-def test_status_ignores_cosmetic_whitespace(tmp_path):
+def test_status_missing_or_empty_hub(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "a\n"})
     init_cmd.run(tmp_path)
-    sync_cmd.run(tmp_path)
-    # trailing whitespace + CRLF should normalize away -> still synced
-    (tmp_path / "CLAUDE.md").write_text("a   \r\n", encoding="utf-8")
-    assert states(tmp_path)["CLAUDE.md"] == "synced"
+
+    # Empty the hub
+    core.hub_path(tmp_path).write_text("", encoding="utf-8")
+    rows1 = status_cmd.run(tmp_path)
+    hub_row1 = next(r for r in rows1 if r["kind"] == "hub")
+    assert hub_row1["state"] == "empty_hub"
+
+    # Delete the hub
+    core.hub_path(tmp_path).unlink()
+    rows2 = status_cmd.run(tmp_path)
+    hub_row2 = next(r for r in rows2 if r["kind"] == "hub")
+    assert hub_row2["state"] == "missing_hub"
 
 
-def test_status_missing_and_untracked(tmp_path):
+def test_status_untracked_candidate(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "a\n"})
     init_cmd.run(tmp_path)
-    sync_cmd.run(tmp_path)
 
-    (tmp_path / "GEMINI.md").write_text("g\n", encoding="utf-8")  # known convention, not tracked
-    (tmp_path / "CLAUDE.md").unlink()  # tracked, now gone
+    # Create an untracked local candidate
+    agy_file = tmp_path / ".agy/ANTIGRAVITY.md"
+    agy_file.parent.mkdir(parents=True, exist_ok=True)
+    agy_file.write_text("rules\n", encoding="utf-8")
 
-    result = states(tmp_path)
-    assert result["CLAUDE.md"] == "missing"
-    assert result["GEMINI.md"] == "untracked"
+    rows = status_cmd.run(tmp_path)
+
+    cand_row = next(r for r in rows if r["kind"] == "candidate" and r["path"] == ".agy/ANTIGRAVITY.md")
+    assert cand_row["state"] == "untracked_candidate"
+    assert cand_row["label"] == "local convention candidate"
 
 
-def test_status_drifted_when_never_synced(tmp_path):
-    make_repo(tmp_path, {
-        "CLAUDE.md": "a\n",
-        ".ctx/manifest.toml": '[project]\nname = "test"\nhub = ".ctx/SUPERCTX.md"\n\n[[files]]\npath = "CLAUDE.md"\ntools = ["Claude Code"]\n'
-    })
-    # Since CLAUDE.md is not a shim and no backup snapshot exists, it is drifted
-    assert states(tmp_path)["CLAUDE.md"] == "drifted"
+def test_status_uninitialized_repo(tmp_path):
+    import pytest
+    from superctx.status import StatusError
+
+    with pytest.raises(StatusError) as exc_info:
+        status_cmd.run(tmp_path)
+    assert "SuperCtx is not initialized in this project" in str(exc_info.value)
+
+
+def test_status_is_read_only(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "a\n"})
+    init_cmd.run(tmp_path)
+
+    # Record mtimes
+    manifest_mtime = core.manifest_path(tmp_path).stat().st_mtime
+    hub_mtime = core.hub_path(tmp_path).stat().st_mtime
+    shim_mtime = (tmp_path / "CLAUDE.md").stat().st_mtime
+    backup_mtime = (core.sources_dir(tmp_path) / "CLAUDE.md").stat().st_mtime
+
+    # Run status multiple times
+    status_cmd.run(tmp_path)
+    status_cmd.run(tmp_path)
+
+    # Verify no changes/mutation
+    assert core.manifest_path(tmp_path).stat().st_mtime == manifest_mtime
+    assert core.hub_path(tmp_path).stat().st_mtime == hub_mtime
+    assert (tmp_path / "CLAUDE.md").stat().st_mtime == shim_mtime
+    assert (core.sources_dir(tmp_path) / "CLAUDE.md").stat().st_mtime == backup_mtime
+
+
+def test_status_shim_target_semantics(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "a\n", "AGENTS.md": "b\n"})
+    init_cmd.run(tmp_path)
+
+    # Verify Claude Code shim has @ import targeting the hub
+    claude_shim_text = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "@.ctx/SUPERCTX.md" in claude_shim_text.replace(" ", "")
+
+    # Verify plain-pointer shim does not have @ import and points to the hub
+    agents_shim_text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert "@" not in agents_shim_text
+    assert ".ctx/SUPERCTX.md" in agents_shim_text
 
 
 def test_resolve_version_cases(tmp_path, monkeypatch):

@@ -30,11 +30,24 @@ def test_demo_project_generates_expected_manifest_and_hub(tmp_path):
         "centralized": ["CLAUDE.md", "AGENTS.md", "GEMINI.md"],
         "missing": [],
     }
-    assert status_rows == [
-        {"path": "CLAUDE.md", "state": "synced"},
-        {"path": "AGENTS.md", "state": "synced"},
-        {"path": "GEMINI.md", "state": "synced"},
-    ]
+    # Assert status rows matches new schema
+    assert next(r for r in status_rows if r["kind"] == "hub") == {
+        "kind": "hub",
+        "path": ".ctx/SUPERCTX.md",
+        "state": "healthy",
+    }
+    assert next(r for r in status_rows if r["kind"] == "shim" and r["path"] == "CLAUDE.md") == {
+        "kind": "shim",
+        "path": "CLAUDE.md",
+        "state": "healthy",
+        "import_syntax": "claude-at-import",
+    }
+    assert next(r for r in status_rows if r["kind"] == "backup" and r["source"] == "CLAUDE.md") == {
+        "kind": "backup",
+        "path": ".ctx/sources/CLAUDE.md",
+        "source": "CLAUDE.md",
+        "state": "healthy",
+    }
     assert core.normalize(core.manifest_path(project).read_text(encoding="utf-8")) == (
         core.normalize((SNAPSHOTS / "manifest.toml").read_text(encoding="utf-8"))
     )
@@ -74,9 +87,10 @@ def test_demo_project_cli_round_trip(tmp_path):
 
     assert "initialized" in init_result.stdout
     assert "+ centralized CLAUDE.md" in sync_result.stdout
-    assert "synced     CLAUDE.md" in status_result.stdout
-    assert "synced     AGENTS.md" in status_result.stdout
-    assert "synced     GEMINI.md" in status_result.stdout
+    assert "Hub:\n- .ctx/SUPERCTX.md exists" in status_result.stdout
+    assert "- CLAUDE.md imports .ctx/SUPERCTX.md" in status_result.stdout
+    assert "- AGENTS.md points to .ctx/SUPERCTX.md" in status_result.stdout
+    assert "- .ctx/sources/CLAUDE.md" in status_result.stdout
 
 
 def test_generated_sources_are_ignored_inside_ctx(tmp_path):

@@ -1,10 +1,13 @@
-"""`superctx status` — read-only drift report comparing live tool files to their snapshots.
+"""`superctx status` — read-only hub-and-shim health check report.
 
-States per path:
-  synced    — live file matches its .ctx/sources/ snapshot
-  drifted   — live file differs from snapshot (or has never been synced)
-  missing   — tracked in the manifest but the live file is gone
-  untracked — a known instruction-file convention exists in the repo but isn't in the manifest
+Health states:
+  healthy             — all structural integrity checks passed for hub, shim, or backup
+  missing_shim        — registered file does not exist in the project
+  broken_shim         — registered file is not a valid generated shim pointing to the hub
+  missing_backup      — original backup copy under .ctx/sources/ is missing
+  missing_hub         — the canonical .ctx/SUPERCTX.md hub does not exist
+  empty_hub           — the canonical .ctx/SUPERCTX.md hub is empty
+  untracked_candidate — local convention candidate path matches standard convention but is not tracked
 """
 
 from __future__ import annotations
@@ -14,6 +17,11 @@ import os
 import json
 
 from . import core, registry, shim
+
+
+class StatusError(Exception):
+    """Raised when SuperCtx is not initialized or has configuration errors."""
+    pass
 
 
 def resolve_version(module_path: Path | None = None) -> dict:
@@ -115,49 +123,96 @@ def diagnostics(project_dir: Path, module_path: Path | None = None) -> dict:
 
 def run(project_dir: Path) -> list[dict]:
     project_dir = Path(project_dir)
+    manifest_path = core.manifest_path(project_dir)
+
+    if not manifest_path.is_file():
+        raise StatusError("SuperCtx is not initialized in this project. Run 'superctx init' first.")
+
+    results: list[dict] = []
+
+    # 1. Check Hub
+    hub_p = core.hub_path(project_dir)
+    hub_rel = f"{core.CTX_DIRNAME}/{core.HUB_NAME}"
+    if not hub_p.is_file():
+        results.append({"kind": "hub", "path": hub_rel, "state": "missing_hub"})
+    else:
+        hub_content = hub_p.read_text(encoding="utf-8")
+        if not hub_content.strip():
+            results.append({"kind": "hub", "path": hub_rel, "state": "empty_hub"})
+        else:
+            results.append({"kind": "hub", "path": hub_rel, "state": "healthy"})
+
+    # 2. Check Registered Files
     manifest = core.load_manifest(project_dir)
     files = manifest.get("files", [])
     tracked = {entry["path"] for entry in files}
-    results: list[dict] = []
 
     for entry in files:
         rel = entry["path"]
         live = project_dir / rel
-        snapshot = core.sources_dir(project_dir) / rel
+        backup = core.sources_dir(project_dir) / rel
+
+        conv = registry.lookup_known_convention(rel)
+        import_syntax = conv.get("import_syntax", "plain-pointer") if conv else "plain-pointer"
+
+        # Check shim
         if not live.is_file():
-            state = "missing"
-        elif shim.is_shim_file(live):
-            state = "synced"
-        elif not snapshot.is_file():
-            state = "drifted"  # tracked but never centralized
-        elif core.content_hash(core.read_text(live)) == core.content_hash(core.read_text(snapshot)):
-            state = "synced"
+            results.append({
+                "kind": "shim",
+                "path": rel,
+                "state": "missing_shim",
+                "import_syntax": import_syntax
+            })
+        elif not shim.is_shim_file(live):
+            results.append({
+                "kind": "shim",
+                "path": rel,
+                "state": "broken_shim",
+                "import_syntax": import_syntax
+            })
         else:
-            state = "drifted"
-        results.append({"path": rel, "state": state})
+            results.append({
+                "kind": "shim",
+                "path": rel,
+                "state": "healthy",
+                "import_syntax": import_syntax
+            })
 
-    # Untracked verified files
+        # Check backup
+        backup_rel = f"{core.CTX_DIRNAME}/{core.SOURCES_DIRNAME}/{rel}"
+        if not backup.is_file():
+            results.append({
+                "kind": "backup",
+                "path": backup_rel,
+                "source": rel,
+                "state": "missing_backup"
+            })
+        else:
+            results.append({
+                "kind": "backup",
+                "path": backup_rel,
+                "source": rel,
+                "state": "healthy"
+            })
+
+    # 3. Check Candidates
     discovery = registry.detect_all(project_dir)
-    for c in discovery["verified_instruction_file"]:
-        if c["path"] not in tracked:
-            results.append({"path": c["path"], "state": "untracked"})
-
-    # Untracked folder and local candidates
     candidate_keys = [
         "supported_folder_candidate",
         "legacy_or_uncertain_folder_candidate",
         "unverified_local_candidate",
+        "verified_instruction_file",
     ]
 
     for key in candidate_keys:
-        for cand in discovery[key]:
+        for cand in discovery.get(key, []):
             if cand["path"] not in tracked:
                 results.append({
+                    "kind": "candidate",
                     "path": cand["path"],
                     "state": "untracked_candidate",
-                    "category": key,
-                    "label": cand["label"],
-                    "note": cand["note"],
+                    "label": cand.get("label", "untracked candidate"),
+                    "note": cand.get("note", "")
                 })
 
     return results
