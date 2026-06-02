@@ -23,15 +23,15 @@ def is_shim_file(path: Path) -> bool:
 
 def generate_shim(rel_path: str, import_syntax: str) -> str:
     """Render the content of a shim for a given relative path and import syntax.
-    
+
     Computes relative paths from the file's parent directory.
     """
     parent_dir = Path(rel_path).parent
-    
+
     # Compute relative paths using forward slashes for cross-platform consistency
     rel_path_to_hub = os.path.relpath(".ctx/SUPERCTX.md", parent_dir).replace("\\", "/")
     rel_path_to_backup = os.path.relpath(f".ctx/sources/{rel_path}", parent_dir).replace("\\", "/")
-    
+
     if import_syntax == "claude-at-import":
         return (
             f"# SuperCtx\n"
@@ -51,7 +51,7 @@ def generate_shim(rel_path: str, import_syntax: str) -> str:
 
 def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False) -> dict:
     """Apply the shim to a live file in project_dir.
-    
+
     1. Check if the live file exists.
     2. Check if the live file is already a shim.
     3. If not already a shim, and the live file exists, back it up to .ctx/sources/<rel_path>.
@@ -62,19 +62,19 @@ def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False) -> 
     project_dir = Path(project_dir)
     live_file = project_dir / rel_path
     backup_file = project_dir / ".ctx" / "sources" / rel_path
-    
+
     # Determine import syntax from registry
     conv = registry.lookup_known_convention(rel_path)
     import_syntax = conv.get("import_syntax", "plain-pointer") if conv else "plain-pointer"
-    
+
     live_exists = live_file.is_file()
     already_shim = False
     live_content = ""
-    
+
     if live_exists:
         live_content = live_file.read_text(encoding="utf-8")
         already_shim = is_shim(live_content)
-        
+
     backed_up = False
     if live_exists and not already_shim:
         backup_exists = backup_file.is_file()
@@ -87,16 +87,16 @@ def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False) -> 
                 "backed_up": False,
                 "backup_path": str(backup_file.relative_to(project_dir)),
             }
-        
+
         # Perform backup
         backup_file.parent.mkdir(parents=True, exist_ok=True)
         backup_file.write_text(live_content, encoding="utf-8")
         backed_up = True
-            
+
     shim_content = generate_shim(rel_path, import_syntax)
     live_file.parent.mkdir(parents=True, exist_ok=True)
     live_file.write_text(shim_content, encoding="utf-8")
-    
+
     return {
         "rel_path": rel_path,
         "shimmed": True,

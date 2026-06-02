@@ -26,7 +26,7 @@ def test_generate_shim_claude():
     # Verify backup reference is inside a comment and not active import
     assert "@.ctx/sources/CLAUDE.md" not in root_shim
     assert "<!--" in root_shim and ".ctx/sources/CLAUDE.md" in root_shim
-    
+
     # Nested .claude/CLAUDE.md
     nested_shim = generate_shim(".claude/CLAUDE.md", "claude-at-import")
     assert "@../.ctx/SUPERCTX.md" in nested_shim
@@ -41,7 +41,7 @@ def test_generate_shim_plain():
     assert "`.ctx/sources/AGENTS.md`" in root_shim
     # Verify no active imports in plain pointer shim
     assert "@" not in root_shim
-    
+
     # Nested .codex/AGENTS.md
     nested_shim = generate_shim(".codex/AGENTS.md", "plain-pointer")
     assert "`../.ctx/SUPERCTX.md`" in nested_shim
@@ -61,12 +61,12 @@ def test_apply_shim_existing_file(tmp_path):
     res = apply_shim(tmp_path, "CLAUDE.md")
     assert res["shimmed"] is True
     assert res["backed_up"] is True
-    
+
     # Verify original is backed up
     backup = tmp_path / ".ctx" / "sources" / "CLAUDE.md"
     assert backup.is_file()
     assert backup.read_text(encoding="utf-8") == "original content\n"
-    
+
     # Verify live is shimmed
     assert is_shim_file(tmp_path / "CLAUDE.md")
 
@@ -80,7 +80,7 @@ def test_apply_shim_already_shim(tmp_path):
     assert res["shimmed"] is True
     assert res["already_shim"] is True
     assert res["backed_up"] is False
-    
+
     # Verify backup is NOT overwritten with the shim
     backup = tmp_path / ".ctx" / "sources" / "CLAUDE.md"
     assert backup.read_text(encoding="utf-8") == "true original content\n"
@@ -94,12 +94,12 @@ def test_apply_shim_backup_collision_prevention(tmp_path):
     res = apply_shim(tmp_path, "CLAUDE.md", force_backup=False)
     assert res["shimmed"] is False
     assert res["reason"] == "backup_exists_and_live_has_edits"
-    
+
     # Verify live content is preserved and backup is untouched
     assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8") == "modified user content\n"
     backup = tmp_path / ".ctx" / "sources" / "CLAUDE.md"
     assert backup.read_text(encoding="utf-8") == "true original content\n"
-    
+
     # Apply shim WITH force — should overwrite backup and apply shim
     res2 = apply_shim(tmp_path, "CLAUDE.md", force_backup=True)
     assert res2["shimmed"] is True
@@ -118,7 +118,7 @@ def test_apply_shim_already_shim_force_backup(tmp_path):
     assert res["shimmed"] is True
     assert res["already_shim"] is True
     assert res["backed_up"] is False
-    
+
     # Backup file must remain "true original content", not the shim text
     backup = tmp_path / ".ctx" / "sources" / "CLAUDE.md"
     assert backup.read_text(encoding="utf-8") == "true original content\n"
