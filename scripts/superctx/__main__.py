@@ -61,7 +61,7 @@ def _cmd_init(project_dir: Path) -> int:
         print("WARNING: Some shims could not be applied due to pre-existing backups:")
         for shim in failed_shims:
             print(f"  ! {shim}")
-        print("To resolve, manually remove or rename the pre-existing backup files in .ctx/sources/ and re-run init.")
+        print("To resolve, remove the conflicting backup files in .ctx/sources/ and run /superctx:init again.")
         print()
 
     untracked = result.get("untracked", [])

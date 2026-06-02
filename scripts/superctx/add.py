@@ -69,7 +69,7 @@ def run(project_dir: Path, input_path: str) -> AddResult:
     if not is_live_shim and backup_file.is_file():
         raise AddError(
             f"A backup already exists at {backup_file.relative_to(project_dir)}. "
-            f"To resolve, manually remove or rename the pre-existing backup file in .ctx/sources/ and re-run add."
+            f"To resolve, remove the conflicting backup file in .ctx/sources/ and run /superctx:add <path> again."
         )
 
     # 5. Read original content
@@ -162,8 +162,8 @@ def run(project_dir: Path, input_path: str) -> AddResult:
         status="added",
         tools=tools,
         message=(
-            f"Added {rel_path_str} as a tracked instruction file.\n\n"
-            f"Next step:\n"
-            f"  Edit {core.CTX_DIRNAME}/{core.HUB_NAME} directly to update instructions."
+            f"Added {rel_path_str}. Original content backed up, incorporated into "
+            f".ctx/{core.HUB_NAME}, and replaced with a generated shim. "
+            f"Agents read the hub through their shims automatically."
         )
     )

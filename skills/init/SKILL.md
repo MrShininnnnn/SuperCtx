@@ -24,4 +24,4 @@ exists it makes no changes.
   to `.ctx/manifest.toml`.
 - That `.ctx/sources/` is gitignored (inactive backup storage for original instruction files) while
   `.ctx/manifest.toml` and `.ctx/SUPERCTX.md` are committed.
-- Next step: Edit `.ctx/SUPERCTX.md` directly to update instructions. Coding agents will automatically read the shims.
+- `.ctx/SUPERCTX.md` is now the canonical project context. Coding agents read it automatically through their shims. Use `/superctx:add <path>` to connect additional instruction files.
