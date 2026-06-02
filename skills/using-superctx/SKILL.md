@@ -5,7 +5,7 @@ description: Use when entering a repository with a .ctx/ hub, or when the user a
 
 # SuperCtx Reference Guide
 
-This skill orientates coding agents on how to interact with the project-local SuperCtx context hub.
+This skill orients coding agents on how to interact with the project-local SuperCtx context hub.
 
 ## When to Use
 
@@ -34,7 +34,7 @@ SuperCtx provides a centralized project-local context layer. It supports the fol
 1. **Do NOT import `.ctx/sources/` backups as active context.** Agents must not read or load files from `.ctx/sources/` as active context (they are inactive recovery/drift snapshots). SuperCtx internals may read them for drift checks and status checks.
 2. **Do NOT instruct users to edit TOML manually.** In the happy path, always use `/superctx:add <path>` or `/superctx:init` rather than telling the user to edit `.ctx/manifest.toml`.
 3. **Updating Instructions (Current Model):** To update project instructions, edit the active tool files (e.g. `.claude/CLAUDE.md`, `.codex/AGENTS.md`) and run `/superctx:sync`. Do NOT edit `.ctx/SUPERCTX.md` directly.
-4. **Updating Instructions (Planned v0.2 Model):** Under the planned v0.2 hub-and-shim model, instructions will be updated directly in `.ctx/SUPERCTX.md`, and generated shims must not be edited.
+4. **Updating Instructions (Planned v0.2 Model):** Under the planned v0.2 hub-and-shim model, instructions will be updated directly in `.ctx/SUPERCTX.md`, and generated shims normally must not be edited. For emergency repair, prefer regenerating shims through SuperCtx commands before hand-editing them.
 
 ## Command Guide
 
@@ -51,7 +51,7 @@ SuperCtx provides a centralized project-local context layer. It supports the fol
 
 ### Workflow 2: Checking context for a specific tool
 - **User:** "What context does Codex have?"
-- **Agent Action:** Inspect `.codex/AGENTS.md`. If freshness matters, run `/superctx:status` to verify if `.codex/AGENTS.md` matches `.ctx/SUPERCTX.md`.
+- **Agent Action:** Inspect `.codex/AGENTS.md`. If freshness matters, run `/superctx:status` to verify whether tracked files match their latest SuperCtx snapshots before relying on the generated hub.
 
 ### Workflow 3: Checking connection and health
 - **User:** "Is everything connected?"
