@@ -21,9 +21,12 @@ def _cmd_init(project_dir: Path) -> int:
     if not result["created"]:
         if result.get("partially_migrated"):
             print("SuperCtx: This project is partially migrated.")
-            print("The following shims are missing or broken:")
-            for shim in result["broken_shims"]:
-                print(f"  ! {shim}")
+            if result.get("manifest_error"):
+                print(f"Error parsing manifest: {result['manifest_error']}")
+            else:
+                print("The following shims are missing or broken:")
+                for shim in result["broken_shims"]:
+                    print(f"  ! {shim}")
             print()
             return 0
         else:
@@ -58,7 +61,7 @@ def _cmd_init(project_dir: Path) -> int:
         print("WARNING: Some shims could not be applied due to pre-existing backups:")
         for shim in failed_shims:
             print(f"  ! {shim}")
-        print("To overwrite the backups and apply the shims, run the appropriate add command with force.")
+        print("To resolve, manually remove or rename the pre-existing backup files in .ctx/sources/ and re-run init.")
         print()
 
     untracked = result.get("untracked", [])

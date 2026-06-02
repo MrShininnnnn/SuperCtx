@@ -18,11 +18,26 @@ def run(project_dir: Path) -> dict:
             untracked.append(cand["path"])
 
     if core.manifest_path(project_dir).is_file():
+        manifest_error = None
         try:
             manifest = core.load_manifest(project_dir)
             files = manifest.get("files", [])
-        except Exception:
+        except Exception as e:
             files = []
+            manifest_error = str(e)
+
+        if manifest_error:
+            return {
+                "created": False,
+                "reason": "exists",
+                "ctx_dir": str(cdir),
+                "partially_migrated": True,
+                "manifest_error": manifest_error,
+                "connected": [],
+                "detected": [],
+                "hub": f"{core.CTX_DIRNAME}/{core.HUB_NAME}",
+                "untracked": untracked,
+            }
 
         broken_shims = []
         for entry in files:

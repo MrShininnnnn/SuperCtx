@@ -504,3 +504,14 @@ def test_add_local_candidate_and_convention(tmp_path):
     assert res_dup.status == "already_tracked"
     assert res_dup.tools == []
     assert "is already tracked" in res_dup.message
+
+def test_init_manifest_decode_error(tmp_path):
+    make_repo(tmp_path, {
+        "CLAUDE.md": "x\n",
+        ".ctx/manifest.toml": "invalid toml syntax = {broken\n"
+    })
+    result = init_cmd.run(tmp_path)
+    assert result["created"] is False
+    assert result["reason"] == "exists"
+    assert result["partially_migrated"] is True
+    assert "manifest_error" in result
