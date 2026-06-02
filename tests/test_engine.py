@@ -708,7 +708,8 @@ def test_add_local_candidate_and_convention(tmp_path):
     assert res.status == "added"
     assert res.tools == []
     assert ".agy/ANTIGRAVITY.md" in res.message
-    assert "Edit .ctx/SUPERCTX.md directly to update instructions" in res.message
+    assert "Edit .ctx/SUPERCTX.md directly to update instructions" not in res.message
+    assert "backed up" in res.message and "shim" in res.message
 
     # Check manifest
     manifest = core.load_manifest(tmp_path)
@@ -775,7 +776,8 @@ def test_add_backup_collision(tmp_path):
     with pytest.raises(add_cmd.AddError) as exc_info:
         add_cmd.run(tmp_path, "somefile.md")
     assert "backup already exists" in str(exc_info.value).lower()
-    assert "manually remove or rename the pre-existing backup file" in str(exc_info.value)
+    assert "manually remove or rename the pre-existing backup file" not in str(exc_info.value)
+    assert "/superctx:add" in str(exc_info.value)
 
 
 def test_add_already_shimmed_with_backup(tmp_path):
