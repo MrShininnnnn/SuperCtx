@@ -26,10 +26,14 @@ def test_init_detects_and_scaffolds(tmp_path):
     result = init_cmd.run(tmp_path)
 
     assert result["created"] is True
-    assert set(result["detected"]) == {"CLAUDE.md", "AGENTS.md"}
+    assert set(result["connected"]) == {"CLAUDE.md", "AGENTS.md"}
     assert core.manifest_path(tmp_path).is_file()
     assert core.hub_path(tmp_path).is_file()
-    assert (core.ctx_dir(tmp_path) / ".gitignore").read_text().strip().endswith("sources/")
+
+    # gitignore check
+    gitignore_text = (core.ctx_dir(tmp_path) / ".gitignore").read_text()
+    assert gitignore_text.strip().endswith("sources/")
+    assert "Inactive backup storage" in gitignore_text
 
     manifest = core.load_manifest(tmp_path)
     assert {f["path"] for f in manifest["files"]} == {"CLAUDE.md", "AGENTS.md"}
@@ -37,11 +41,20 @@ def test_init_detects_and_scaffolds(tmp_path):
     claude = next(f for f in manifest["files"] if f["path"] == "CLAUDE.md")
     assert claude["tools"] == ["Claude Code"]
 
+    # Verify shims exist and are valid shims
+    from superctx.shim import is_shim_file
+    assert is_shim_file(tmp_path / "CLAUDE.md") is True
+    assert is_shim_file(tmp_path / "AGENTS.md") is True
+
+    # Verify backups are stored with original content
+    assert (core.sources_dir(tmp_path) / "CLAUDE.md").read_text() == "claude ctx\n"
+    assert (core.sources_dir(tmp_path) / "AGENTS.md").read_text() == "agents ctx\n"
+
 
 def test_init_ignores_unrelated_files(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "x\n", "README.md": "not a tool file\n"})
     result = init_cmd.run(tmp_path)
-    assert result["detected"] == ["CLAUDE.md"]
+    assert result["connected"] == ["CLAUDE.md"]
 
 
 def test_init_detects_hidden_instruction_files(tmp_path):
@@ -53,36 +66,11 @@ def test_init_detects_hidden_instruction_files(tmp_path):
     })
     result = init_cmd.run(tmp_path)
     assert result["created"] is True
-    assert set(result["detected"]) == {
+    assert set(result["connected"]) == {
         ".claude/CLAUDE.md",
         ".codex/AGENTS.md",
         "AGENTS.md"
     }
-
-    # Run sync to centralize the detected hidden files
-    sync_result = sync_cmd.run(tmp_path)
-    assert set(sync_result["centralized"]) == {
-        ".claude/CLAUDE.md",
-        ".codex/AGENTS.md",
-        "AGENTS.md"
-    }
-    assert sync_result["missing"] == []
-
-    # Verify status reports them as synced
-    status_rows = [r for r in status_cmd.run(tmp_path) if r["state"] != "untracked_candidate"]
-    assert len(status_rows) == 3
-    for row in status_rows:
-        assert row["state"] == "synced"
-
-    manifest = core.load_manifest(tmp_path)
-    files = {entry["path"]: entry for entry in manifest["files"]}
-    assert files[".claude/CLAUDE.md"]["tools"] == ["Claude Code"]
-    assert files[".codex/AGENTS.md"]["tools"] == ["OpenAI Codex"]
-    assert files["AGENTS.md"]["tools"] == [
-        "OpenAI Codex", "Cursor", "GitHub Copilot", "Windsurf", "Aider",
-        "Zed", "Jules", "Devin", "Gemini CLI (opt-in)"
-    ]
-    assert ".agy/ANTIGRAVITY.md" not in files
 
     # Verify the generated hub file includes proper provenance headers and contents
     hub_content = core.hub_path(tmp_path).read_text(encoding="utf-8")
@@ -93,6 +81,20 @@ def test_init_detects_hidden_instruction_files(tmp_path):
     assert "## From: AGENTS.md" in hub_content
     assert "root agents" in hub_content
 
+    # Since they are shims now, run sync to ensure it doesn't overwrite backups and correctly aggregates
+    sync_result = sync_cmd.run(tmp_path)
+    assert set(sync_result["centralized"]) == {
+        ".claude/CLAUDE.md",
+        ".codex/AGENTS.md",
+        "AGENTS.md"
+    }
+
+    # Verify status reports them as synced (after we check in sync they are resolved from backups)
+    status_rows = [r for r in status_cmd.run(tmp_path) if r["state"] != "untracked_candidate"]
+    assert len(status_rows) == 3
+    for row in status_rows:
+        assert row["state"] == "synced"
+
 
 def test_init_is_idempotent(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "x\n"})
@@ -100,6 +102,37 @@ def test_init_is_idempotent(tmp_path):
     again = init_cmd.run(tmp_path)
     assert again["created"] is False
     assert again["reason"] == "exists"
+    assert again["partially_migrated"] is False
+
+
+def test_init_broken_shims(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "x\n"})
+    init_cmd.run(tmp_path)
+
+    # Manually break CLAUDE.md shim
+    (tmp_path / "CLAUDE.md").write_text("broken shim content", encoding="utf-8")
+
+    again = init_cmd.run(tmp_path)
+    assert again["created"] is False
+    assert again["reason"] == "exists"
+    assert again["partially_migrated"] is True
+    assert again["broken_shims"] == ["CLAUDE.md"]
+
+
+def test_init_backup_collision_reports_failure(tmp_path):
+    # Pre-create backup and a modified live file to trigger backup collision
+    make_repo(tmp_path, {
+        "CLAUDE.md": "modified content\n",
+        ".ctx/sources/CLAUDE.md": "original backup\n"
+    })
+    result = init_cmd.run(tmp_path)
+    assert result["created"] is True
+    assert result.get("partial_shim_failure") is True
+    assert result["failed_shims"] == ["CLAUDE.md"]
+    assert "CLAUDE.md" not in result["connected"]
+
+    # Verify live is NOT shimmed (original content preserved)
+    assert (tmp_path / "CLAUDE.md").read_text() == "modified content\n"
 
 
 # --- sync -------------------------------------------------------------------
@@ -178,8 +211,11 @@ def test_status_missing_and_untracked(tmp_path):
 
 
 def test_status_drifted_when_never_synced(tmp_path):
-    make_repo(tmp_path, {"CLAUDE.md": "a\n"})
-    init_cmd.run(tmp_path)  # no sync yet
+    make_repo(tmp_path, {
+        "CLAUDE.md": "a\n",
+        ".ctx/manifest.toml": '[project]\nname = "test"\nhub = ".ctx/SUPERCTX.md"\n\n[[files]]\npath = "CLAUDE.md"\ntools = ["Claude Code"]\n'
+    })
+    # Since CLAUDE.md is not a shim and no backup snapshot exists, it is drifted
     assert states(tmp_path)["CLAUDE.md"] == "drifted"
 
 
@@ -468,3 +504,14 @@ def test_add_local_candidate_and_convention(tmp_path):
     assert res_dup.status == "already_tracked"
     assert res_dup.tools == []
     assert "is already tracked" in res_dup.message
+
+def test_init_manifest_decode_error(tmp_path):
+    make_repo(tmp_path, {
+        "CLAUDE.md": "x\n",
+        ".ctx/manifest.toml": "invalid toml syntax = {broken\n"
+    })
+    result = init_cmd.run(tmp_path)
+    assert result["created"] is False
+    assert result["reason"] == "exists"
+    assert result["partially_migrated"] is True
+    assert "manifest_error" in result

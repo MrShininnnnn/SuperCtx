@@ -21,8 +21,6 @@ exists it makes no changes.
 
 - Which tool instruction files were auto-detected (from the cited conventions registry) and added
   to `.ctx/manifest.toml`.
-- That `.ctx/sources/` is gitignored (a local drift-detection cache) while `.ctx/manifest.toml`
-  and `.ctx/SUPERCTX.md` are committed.
-- Next step: run `/superctx:sync` to populate `.ctx/SUPERCTX.md`.
-
-If nothing was detected, suggest the user run `/superctx:add <path>` to start tracking custom files, or manually add file paths to `.ctx/manifest.toml` as an advanced fallback.
+- That `.ctx/sources/` is gitignored (inactive backup storage for original instruction files) while
+  `.ctx/manifest.toml` and `.ctx/SUPERCTX.md` are committed.
+- Next step: Edit `.ctx/SUPERCTX.md` directly to update instructions. Coding agents will automatically read the shims.

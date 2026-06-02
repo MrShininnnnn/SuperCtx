@@ -35,21 +35,21 @@ SuperCtx uses a project-local context folder:
 .ctx/
 ```
 
-The `.ctx/` folder is the centralized hub for project context. SuperCtx reads known tool instruction files and pulls them into `.ctx/SUPERCTX.md`:
+The `.ctx/` folder is the centralized hub for project context. SuperCtx makes `.ctx/SUPERCTX.md` the canonical hub, and generates thin shims pointing back to it:
 
 ```text
-CLAUDE.md  ─┐
-AGENTS.md  ─┼─>  .ctx/SUPERCTX.md
-GEMINI.md  ─┘
+               ┌─> CLAUDE.md (shim)
+.ctx/SUPERCTX.md ┼─> AGENTS.md (shim)
+               └─> GEMINI.md (shim)
 ```
 
-`SUPERCTX.md` is a structured aggregation of the source instruction files with provenance for each source. Your original tool files are never modified.
+`SUPERCTX.md` is a version-controlled, hand-editable Markdown file that serves as the single source of truth. Original tool instruction files are backed up and converted to thin referential shims.
 
 ### Agent-Native Bootstrapping
 
 SuperCtx includes a built-in agent reference skill, `/superctx:using-superctx`. Run it when working in a SuperCtx-enabled repository to orient Claude Code on the current project's context boundaries and active files.
 
-In the current release, SuperCtx uses an **inward-sync** model: agents and users edit the underlying tool-specific instruction files (e.g. `CLAUDE.md`, `.codex/AGENTS.md`) and run `/superctx:sync` to regenerate the aggregated `.ctx/SUPERCTX.md` hub. The planned v0.2 hub-and-shim release is not shipped yet; it will transition SuperCtx to a central-hub model where agents update `.ctx/SUPERCTX.md` directly and tool-specific files are generated shims.
+In this release, SuperCtx uses a **hub-and-shim** model: agents and users edit the shared project context in `.ctx/SUPERCTX.md` directly. Tool-specific files are generated shims that point back to the hub.
 
 In all versions, SuperCtx is designed to be agent-native: agents should invoke the appropriate slash commands rather than telling users to edit `.ctx/manifest.toml` manually in the happy path.
 
@@ -131,15 +131,13 @@ Inside Claude Code:
 
 ```text
 /superctx:init
-/superctx:sync
 /superctx:status
 ```
 
 The workflow:
 
-1. `/superctx:init` scans the project for known tool instruction files and creates `.ctx/` with a manifest.
-2. `/superctx:sync` pulls tracked tool files into `.ctx/SUPERCTX.md`.
-3. `/superctx:status` reports whether tracked files are synced, drifted, or missing, and lists any untracked standard files or candidates.
+1. `/superctx:init` scans the project for known tool instruction files, populates `.ctx/SUPERCTX.md` with their contents, backs them up under `.ctx/sources/`, and replaces them with generated shims.
+2. `/superctx:status` reports whether tracked files are synced, drifted, or missing, and lists any untracked standard files or candidates.
 
 Example status output:
 
@@ -151,8 +149,6 @@ Tracked files:
 Untracked candidates:
   ? .agy/ANTIGRAVITY.md     local convention candidate; not verified official support
 ```
-
-Run `/superctx:sync` any time a tool instruction file changes.
 
 ## Command Discovery and Namespace Safety
 
