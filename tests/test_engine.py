@@ -267,6 +267,43 @@ def test_sync_uninitialized_repo(tmp_path):
     assert "not initialized" in str(exc_info.value)
 
 
+def test_sync_empty_manifest_reports_no_registered_files(tmp_path):
+    core.ctx_dir(tmp_path).mkdir(parents=True)
+    core.manifest_path(tmp_path).write_text(
+        core.dump_manifest({
+            "project": {"name": "empty", "hub": ".ctx/SUPERCTX.md"},
+            "files": [],
+        }),
+        encoding="utf-8",
+    )
+    core.hub_path(tmp_path).write_text("# SUPERCTX - empty\n", encoding="utf-8")
+
+    result = sync_cmd.run(tmp_path)
+
+    assert result == {
+        "mode": "repair",
+        "healthy": [],
+        "repaired": [],
+        "unresolved": [],
+        "warnings": [],
+    }
+
+
+def test_sync_legacy_mode_is_not_available(tmp_path):
+    import pytest
+    from superctx import __main__ as cli
+
+    make_repo(tmp_path, {"CLAUDE.md": "a\n"})
+    init_cmd.run(tmp_path)
+    hub_before = core.hub_path(tmp_path).read_text(encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["sync", "--legacy", str(tmp_path)])
+
+    assert exc_info.value.code == 2
+    assert core.hub_path(tmp_path).read_text(encoding="utf-8") == hub_before
+
+
 # --- status -----------------------------------------------------------------
 
 def test_status_healthy_shims(tmp_path):
