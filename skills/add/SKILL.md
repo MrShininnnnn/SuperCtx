@@ -9,7 +9,7 @@ Add a local candidate file to the SuperCtx manifest to begin tracking it.
 
 ## Before Running
 
-Announce that you are using SuperCtx:
+Announce that you are using SuperCtx (replace `<path>` with the actual file path argument):
 > Using SuperCtx to connect <path> as a local context file.
 
 ## Run
