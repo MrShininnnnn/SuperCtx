@@ -20,8 +20,9 @@ exists it makes no changes.
 
 ## Then report to the user
 
-- Which tool instruction files were auto-detected (from the cited conventions registry) and added
-  to `.ctx/manifest.toml`.
-- That `.ctx/sources/` is gitignored (inactive backup storage for original instruction files) while
-  `.ctx/manifest.toml` and `.ctx/SUPERCTX.md` are committed.
-- `.ctx/SUPERCTX.md` is now the canonical project context. Coding agents read it automatically through their shims. Use `/superctx:add <path>` to connect additional instruction files.
+Present the output from the command. On the healthy path, keep the report concise:
+
+- Which files were connected (from the command output).
+- `.ctx/SUPERCTX.md` is now the canonical project context. Use `/superctx:add <path>` to connect additional instruction files.
+
+Only surface backup or shim details if the command reports warnings or failures.

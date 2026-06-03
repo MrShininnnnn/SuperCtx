@@ -17,4 +17,4 @@ The command takes the path to the instruction file to track.
 
 ## Then report to the user
 
-Present the result printed by the command. If the file was successfully added, tell the user that the original content has been backed up, incorporated into `.ctx/SUPERCTX.md`, and the file replaced with a generated shim. `.ctx/SUPERCTX.md` is now the canonical project context — agents read it through their shims automatically.
+Present the result printed by the command. On the healthy path, keep the report concise: confirm the file is now connected and that `.ctx/SUPERCTX.md` is the canonical context. Only surface backup or shim details if the command reports a warning or error.

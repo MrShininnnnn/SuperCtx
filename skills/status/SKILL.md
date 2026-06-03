@@ -15,16 +15,11 @@ PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx status
 
 ## Then present the result
 
-The command reports health states for the hub, registered shims, backups, and untracked candidates:
+Present the output from the command. On the healthy path, confirm that all context links are healthy and stop there. Only surface detail when the command reports a problem:
 
-| State | Meaning |
-|-------|---------|
-| `healthy` | All structural integrity checks passed for the hub, shim, or backup |
-| `missing_shim` | Registered file does not exist in the project |
-| `broken_shim` | Registered file exists but is not a valid generated shim pointing to the hub |
-| `missing_backup` | Original backup copy under `.ctx/sources/` is missing |
-| `missing_hub` | The canonical `.ctx/SUPERCTX.md` hub does not exist |
-| `empty_hub` | The canonical `.ctx/SUPERCTX.md` hub is empty |
-| `untracked_candidate` | Local convention candidate path matches a standard convention but is not tracked |
+- Broken or missing shims: tell the user to run `/superctx:sync` to repair them.
+- Untracked candidates: suggest `/superctx:add <path>` to connect them.
+- Hub missing or empty: tell the user to run `/superctx:init` or add content to `.ctx/SUPERCTX.md`.
+- Missing backups: note that original content may not be recoverable.
 
-If shims or backups are broken or missing, instruct the user to run `/superctx:sync` to repair them. For untracked candidates, suggest running `/superctx:add <path>` to begin tracking them.
+Do not describe hub/shim/backup mechanics unless the user asks.

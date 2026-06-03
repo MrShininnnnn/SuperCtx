@@ -173,8 +173,10 @@ def _cmd_status(project_dir: Path) -> int:
     if hub_row and hub_row["state"] != "healthy":
         if hub_row["state"] == "missing_hub":
             print(f"Hub missing: {hub_row['path']}")
+            print("  Run /superctx:init to create the hub.")
         elif hub_row["state"] == "empty_hub":
             print(f"Hub empty: {hub_row['path']}")
+            print("  Run /superctx:sync to repopulate shims, or add content to .ctx/SUPERCTX.md.")
         print()
 
     # Shim problems
@@ -189,7 +191,7 @@ def _cmd_status(project_dir: Path) -> int:
     # Backup problems
     missing_backups = [r for r in backup_rows if r["state"] != "healthy"]
     if missing_backups:
-        print("Missing backups:")
+        print("Missing backups (original content may not be recoverable):")
         for row in missing_backups:
             print(f"  ! {row['path']}")
         print()

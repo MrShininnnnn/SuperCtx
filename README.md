@@ -137,24 +137,22 @@ The workflow:
 1. `/superctx:init` scans the project for known tool instruction files, populates `.ctx/SUPERCTX.md` with their contents, backs them up under `.ctx/sources/`, and replaces them with generated shims.
 2. `/superctx:status` reports structural integrity and health of the hub, registered shims, backups, and untracked candidates.
 
-If status reports missing or broken shims, run `/superctx:sync` to repair the generated shim files from the hub.
-
-Example status output:
+Healthy output:
 
 ```text
-Hub:
-- .ctx/SUPERCTX.md exists
+All SuperCtx context links are healthy.
+```
 
-Registered files:
-- .claude/CLAUDE.md imports .ctx/SUPERCTX.md
-- .codex/AGENTS.md points to .ctx/SUPERCTX.md
+Problem output (only shown when action is needed):
 
-Backups:
-- .ctx/sources/.claude/CLAUDE.md
-- .ctx/sources/.codex/AGENTS.md
+```text
+Shim issues:
+  ! .claude/CLAUDE.md — shim missing or broken
+  Run /superctx:sync to repair.
 
-Candidates:
-- .agy/ANTIGRAVITY.md untracked local candidate
+Untracked candidates:
+  ? .agy/ANTIGRAVITY.md
+    Run /superctx:add .agy/ANTIGRAVITY.md to connect it.
 ```
 
 ## Command Discovery and Namespace Safety
@@ -174,7 +172,7 @@ After installing or reloading the plugin (`/reload-plugins`), you can verify com
 
 **Type `/status`** — only the Claude Code built-in status command should appear. SuperCtx does not register an unprefixed `/status` command.
 
-**Run `/superctx:status`** — SuperCtx reports diagnostics plus hub-and-shim health (hub existence, shim targets, backups, and untracked candidates).
+**Run `/superctx:status`** — SuperCtx confirms health or reports specific problems with actionable next steps.
 
 ## CLI Usage
 
