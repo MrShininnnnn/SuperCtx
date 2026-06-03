@@ -11,6 +11,11 @@ Repair the tracked tool instruction shims from the canonical `.ctx/` hub.
 It checks registered shim files, regenerates missing or broken shims when safe, and reports
 healthy, repaired, unresolved, and warning states.
 
+## Before Running
+
+Announce that you are using SuperCtx:
+> Using SuperCtx to repair generated context shims.
+
 ## Run
 
 ```bash

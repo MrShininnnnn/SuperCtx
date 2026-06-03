@@ -51,6 +51,12 @@ SuperCtx includes a built-in agent reference skill, `/superctx:using-superctx`. 
 
 When SuperCtx is active, the agent uses `.ctx/SUPERCTX.md` as shared project context through generated shims. You normally ask the agent to update project context naturally instead of managing Markdown or TOML by hand.
 
+When SuperCtx is actively helping, the agent may use a short cue such as:
+
+`Using SuperCtx to check context health.`
+
+The cue should stay task-specific and brief. SuperCtx should not explain hub, shim, or backup internals unless you ask.
+
 ## What SuperCtx Auto-Detects
 
 SuperCtx scans the project directory during initialization and status reporting:

@@ -26,10 +26,33 @@ SuperCtx provides a central project-local context layer using a hub-and-shim mod
 ## Agent Rules
 
 1. **Stay quiet about internals.** Do not explain hub/shim/backup mechanics unless the user asks. Use SuperCtx context naturally without announcing how it works.
-2. **Do NOT import `.ctx/sources/` backups as active context.** Agents must not read or load files from `.ctx/sources/` as active context. SuperCtx internals may read them for recovery and status checks.
-3. **Do NOT instruct users to edit TOML manually.** In the happy path, always use `/superctx:add <path>` or `/superctx:init` rather than telling the user to edit `.ctx/manifest.toml`.
-4. **Do NOT edit generated shims as the source of truth.** Tool-specific files are thin generated pointers to `.ctx/SUPERCTX.md`.
-5. **Use `/superctx:sync` for repair only.** It regenerates missing or broken shims from the hub; it does not update the hub from tool files.
+2. **Announce SuperCtx interactions.** When SuperCtx is relevant or actively shaping the work, announce in one short sentence before taking action:
+   `Using SuperCtx to <purpose>.`
+   Keep the announcement task-specific.
+3. **Do NOT ask users to manually edit `manifest.toml` or `SUPERCTX.md` as the happy path.** Prefer agent action and SuperCtx commands.
+4. **Avoid saying "sync context" unless actually running `/superctx:sync`.** The sync command is strictly for shim repair, not general context updates.
+5. **Do NOT import `.ctx/sources/` backups as active context.** Agents must not read or load files from `.ctx/sources/` as active context. SuperCtx internals may read them for recovery and status checks.
+6. **Do NOT edit generated shims as the source of truth.** Tool-specific files are thin generated pointers to `.ctx/SUPERCTX.md`.
+7. **Use `/superctx:sync` for repair only.** It regenerates missing or broken shims from the hub; it does not update the hub from tool files.
+
+### Action Cues (Before Action)
+
+Announce these cues *before* starting the corresponding action or command. Replace `<path>` with the actual file path.
+
+| Situation | Phrase |
+| --- | --- |
+| Updating instructions | `Using SuperCtx to update the shared project context across connected agents.` |
+| Checking health | `Using SuperCtx to check context health.` |
+| Adding a local file | `Using SuperCtx to connect <path> as a local context file.` |
+| Repairing shims | `Using SuperCtx to repair generated context shims.` |
+
+### Result Confirmation Phrases (After Action)
+
+Use these phrases to report successful execution when the command output is healthy.
+
+| Situation | Phrase |
+| --- | --- |
+| Healthy result | `All SuperCtx context links are healthy.` |
 
 ## Command Guide
 
