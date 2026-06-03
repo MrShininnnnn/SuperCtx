@@ -25,10 +25,10 @@ SuperCtx provides a central project-local context layer using a hub-and-shim mod
 
 ## Agent Rules
 
-1. **Do NOT import `.ctx/sources/` backups as active context.** Agents must not read or load files from `.ctx/sources/` as active context. SuperCtx internals may read them for recovery and status checks.
-2. **Do NOT instruct users to edit TOML manually.** In the happy path, always use `/superctx:add <path>` or `/superctx:init` rather than telling the user to edit `.ctx/manifest.toml`.
-3. **Do NOT edit generated shims as the source of truth.** Tool-specific files should remain thin generated pointers to `.ctx/SUPERCTX.md`.
-4. **Update instructions in the hub.** Make project instruction changes in `.ctx/SUPERCTX.md`, then use `/superctx:status` to verify health.
+1. **Stay quiet about internals.** Do not explain hub/shim/backup mechanics unless the user asks. Use SuperCtx context naturally without announcing how it works.
+2. **Do NOT import `.ctx/sources/` backups as active context.** Agents must not read or load files from `.ctx/sources/` as active context. SuperCtx internals may read them for recovery and status checks.
+3. **Do NOT instruct users to edit TOML manually.** In the happy path, always use `/superctx:add <path>` or `/superctx:init` rather than telling the user to edit `.ctx/manifest.toml`.
+4. **Do NOT edit generated shims as the source of truth.** Tool-specific files are thin generated pointers to `.ctx/SUPERCTX.md`.
 5. **Use `/superctx:sync` for repair only.** It regenerates missing or broken shims from the hub; it does not update the hub from tool files.
 
 ## Command Guide

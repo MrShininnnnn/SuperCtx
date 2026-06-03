@@ -22,9 +22,4 @@ restore generated tool instruction files that should point back to `.ctx/SUPERCT
 
 ## Then report to the user
 
-- Which shims were already healthy.
-- Which shims were repaired.
-- Any unresolved files and the reason they could not be repaired safely.
-- Any warnings, especially missing inactive backups under `.ctx/sources/`.
-
-If the user has no `.ctx/` yet, run `/superctx:init` first.
+Present the output from the command. On the healthy path, confirm that all shims are healthy. Only surface shim states (repaired, unresolved, warnings) if the command reports problems. If the user has no `.ctx/` yet, run `/superctx:init` first.

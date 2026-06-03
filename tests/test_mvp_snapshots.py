@@ -89,13 +89,13 @@ def test_demo_project_cli_round_trip(tmp_path):
     )
 
     assert "initialized" in init_result.stdout
-    assert "SuperCtx: sync completed." in sync_result.stdout
-    assert "Already healthy shims:" in sync_result.stdout
-    assert "  - CLAUDE.md" in sync_result.stdout
-    assert "Hub:\n- .ctx/SUPERCTX.md exists" in status_result.stdout
-    assert "- CLAUDE.md imports .ctx/SUPERCTX.md" in status_result.stdout
-    assert "- AGENTS.md points to .ctx/SUPERCTX.md" in status_result.stdout
-    assert "- .ctx/sources/CLAUDE.md" in status_result.stdout
+    assert "All SuperCtx shims are healthy" in sync_result.stdout
+    assert "Already healthy shims:" not in sync_result.stdout
+    assert "All SuperCtx context links are healthy" in status_result.stdout
+    assert "Hub:" not in status_result.stdout
+    assert "Registered files:" not in status_result.stdout
+    assert "SuperCtx diagnostics:" not in status_result.stdout
+    assert "plugin root:" not in status_result.stdout
 
 
 def test_generated_sources_are_ignored_inside_ctx(tmp_path):
