@@ -115,5 +115,5 @@ def test_generated_sources_are_ignored_inside_ctx(tmp_path):
 def test_repository_local_only_gitignore_entries_are_present():
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
 
-    for entry in [".claude/", ".codex/", ".agy/", "docs/"]:
+    for entry in [".claude/", ".codex/", ".agy/", ".ctx/", "docs/"]:
         assert entry in gitignore

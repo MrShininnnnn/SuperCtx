@@ -222,6 +222,7 @@ __marimo__/
 .claude/
 .codex/
 .agy/
+.ctx/
 third_party/
 docs/
 dev/
