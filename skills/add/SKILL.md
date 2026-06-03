@@ -7,6 +7,11 @@ description: Use when the user wants to start tracking a local custom instructio
 
 Add a local candidate file to the SuperCtx manifest to begin tracking it.
 
+## Before Running
+
+Announce that you are using SuperCtx:
+> Using SuperCtx to connect <path> as a local context file.
+
 ## Run
 
 ```bash

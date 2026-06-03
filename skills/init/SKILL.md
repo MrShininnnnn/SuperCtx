@@ -9,6 +9,11 @@ Scaffold the canonical `.ctx/` hub for this project. SuperCtx imports existing p
 instruction files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, ...), stores inactive backups,
 and replaces those files with generated shims pointing to the hub.
 
+## Before Running
+
+Announce that you are using SuperCtx:
+> Using SuperCtx to set up the shared project context for this repo.
+
 ## Run
 
 ```bash
