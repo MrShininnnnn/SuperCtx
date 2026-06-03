@@ -16,6 +16,8 @@ Announce that you are using SuperCtx:
 
 ## Run
 
+Never run this command without first obtaining the user's explicit natural-language consent. If the repository is in a needs-repair state, run `/superctx:status` and `/superctx:sync` instead of `/superctx:init`. If the repository is in a legacy state, running `/superctx:init` directly may fail because existing SuperCtx state is already present. Treat this as migration/recovery work: preserve existing instruction contents and use explicit user-approved migration steps; do not delete `.ctx` or overwrite files ad hoc.
+
 ```bash
 PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx init
 ```

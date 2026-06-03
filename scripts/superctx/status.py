@@ -216,3 +216,142 @@ def run(project_dir: Path) -> list[dict]:
                 })
 
     return results
+
+
+def detect_repo_state(project_dir: Path) -> dict:
+    project_dir = Path(project_dir)
+    manifest_p = core.manifest_path(project_dir)
+    ctx_dir = core.ctx_dir(project_dir)
+
+    # 1. Managed Repo: `.ctx/` folder exists
+    if ctx_dir.is_dir():
+        reasons: list[str] = []
+        is_legacy = False
+
+        # Check manifest existence
+        if not manifest_p.is_file():
+            reasons.append("manifest_missing")
+            candidates = []
+            for entry in registry.instruction_conventions():
+                live = project_dir / entry["path"]
+                if live.is_file():
+                    candidates.append(entry["path"])
+                    if not shim.is_shim_file(live):
+                        is_legacy = True
+
+            if is_legacy:
+                reasons.append("unbacked_live_files_found")
+            state = "managed_legacy" if is_legacy else "managed_needs_repair"
+            rec_action = "migrate" if is_legacy else "repair"
+            return {
+                "state": state,
+                "candidates": sorted(candidates),
+                "reasons": sorted(reasons),
+                "recommended_action": rec_action,
+                "recommended_action_mutates_files": True
+            }
+
+        # Check manifest readability
+        try:
+            manifest = core.load_manifest(project_dir)
+        except Exception:
+            reasons.append("manifest_unreadable")
+            candidates = []
+            for entry in registry.instruction_conventions():
+                live = project_dir / entry["path"]
+                if live.is_file():
+                    candidates.append(entry["path"])
+                    if not shim.is_shim_file(live):
+                        is_legacy = True
+
+            if is_legacy:
+                reasons.append("unbacked_live_files_found")
+            state = "managed_legacy" if is_legacy else "managed_needs_repair"
+            rec_action = "migrate" if is_legacy else "repair"
+            return {
+                "state": state,
+                "candidates": sorted(candidates),
+                "reasons": sorted(reasons),
+                "recommended_action": rec_action,
+                "recommended_action_mutates_files": True
+            }
+
+        # Check hub file
+        hub_p = core.hub_path(project_dir)
+        if not hub_p.is_file():
+            reasons.append("hub_missing")
+        elif not hub_p.read_text(encoding="utf-8").strip():
+            reasons.append("hub_empty")
+
+        files = manifest.get("files", [])
+        tracked = {entry["path"] for entry in files}
+
+        for entry in files:
+            rel = entry["path"]
+            live = project_dir / rel
+            backup = core.sources_dir(project_dir) / rel
+
+            if not live.is_file():
+                reasons.append("missing_shim")
+            elif not shim.is_shim_file(live):
+                if not backup.is_file():
+                    reasons.append("unbacked_live_file")
+                    is_legacy = True
+                else:
+                    reasons.append("broken_shim")
+
+            if not backup.is_file():
+                reasons.append("missing_backup")
+
+        # Include candidate files in reasons/candidates list
+        discovery = registry.detect_all(project_dir)
+        untracked = []
+        for key in ["supported_folder_candidate", "legacy_or_uncertain_folder_candidate", "unverified_local_candidate", "verified_instruction_file"]:
+            for cand in discovery.get(key, []):
+                if cand["path"] not in tracked:
+                    untracked.append(cand["path"])
+
+        if untracked:
+            reasons.append("untracked_candidates_found")
+
+        critical_reasons = [r for r in reasons if r != "untracked_candidates_found"]
+
+        if is_legacy:
+            reasons.append("unbacked_live_files_found")
+            state = "managed_legacy"
+            rec_action = "migrate"
+        elif critical_reasons:
+            state = "managed_needs_repair"
+            rec_action = "repair"
+        else:
+            state = "managed_healthy"
+            rec_action = "none"
+
+        return {
+            "state": state,
+            "candidates": sorted(untracked),
+            "reasons": sorted(list(set(reasons))),
+            "recommended_action": rec_action,
+            "recommended_action_mutates_files": (rec_action != "none")
+        }
+
+    # 2. Unmanaged Repo: `.ctx/` does not exist
+    else:
+        detected = registry.detect(project_dir)
+        if detected:
+            candidates = sorted([c["path"] for c in detected])
+            return {
+                "state": "candidate_repo",
+                "candidates": candidates,
+                "reasons": ["known_instruction_files_found"],
+                "recommended_action": "setup",
+                "recommended_action_mutates_files": True
+            }
+        else:
+            return {
+                "state": "not_candidate",
+                "candidates": [],
+                "reasons": ["no_known_instruction_files"],
+                "recommended_action": "none",
+                "recommended_action_mutates_files": False
+            }

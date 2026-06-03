@@ -123,7 +123,13 @@ def _cmd_sync(project_dir: Path) -> int:
     return 0
 
 
-def _cmd_status(project_dir: Path) -> int:
+def _cmd_status(project_dir: Path, detect: bool = False) -> int:
+    if detect:
+        from .status import detect_repo_state
+        import json
+        state = detect_repo_state(project_dir)
+        print(json.dumps(state))
+        return 0
     try:
         diag = status_cmd.diagnostics(project_dir)
 
@@ -223,6 +229,8 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("init", "sync", "status"):
         p = sub.add_parser(name)
         p.add_argument("project_dir", nargs="?", default=".")
+        if name == "status":
+            p.add_argument("--detect", action="store_true", help="Print structured state classification as JSON")
 
     # Add parser
     p_add = sub.add_parser("add")
@@ -235,7 +243,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "add":
         return _cmd_add(project_dir, args.path)
 
-    dispatch = {"init": _cmd_init, "sync": _cmd_sync, "status": _cmd_status}
+    if args.cmd == "status":
+        return _cmd_status(project_dir, detect=args.detect)
+
+    dispatch = {"init": _cmd_init, "sync": _cmd_sync}
     return dispatch[args.cmd](project_dir)
 
 
