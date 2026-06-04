@@ -13,8 +13,15 @@ fi
 state_json=$(PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx status --detect 2>/dev/null || true)
 
 if [[ -n "$state_json" ]]; then
-  # Parse state and recommended_action safely from stdin using python
-  read -r state action <<<$(printf '%s' "$state_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("state", "not_candidate"), d.get("recommended_action", "none"))' 2>/dev/null || true)
+  # Parse state, recommended_action, and candidates safely using python
+  read -r state action candidates_csv <<<$(printf '%s' "$state_json" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+state = d.get("state", "not_candidate")
+action = d.get("recommended_action", "none")
+candidates = d.get("candidates", [])
+print(state, action, ",".join(candidates))
+' 2>/dev/null || true)
 
   if [[ "$state" == "managed_healthy" ]]; then
     cat <<'EOF'
@@ -35,8 +42,12 @@ EOF
 SuperCtx is present, but some instruction files are legacy and not yet fully migrated. Treat this as a migration state: inspect with `/superctx:status`, preserve existing instruction contents, and do not run setup or remove `.ctx` without explicit user-approved migration steps.
 EOF
   elif [[ "$state" == "candidate_repo" ]]; then
-    cat <<'EOF'
-SuperCtx setup opportunity: This repository contains standard agent instruction files but does not have a shared context hub. If the user asks about project instructions, tool consistency, or shared context, offer to run setup.
-EOF
+    # Format candidate file list for the agent
+    candidate_list=$(printf '%s' "$candidates_csv" | python3 -c '
+import sys
+paths = sys.stdin.read().strip().split(",")
+print("\n".join("- " + p for p in paths if p))
+' 2>/dev/null || true)
+    printf 'SuperCtx setup opportunity: This repository has agent instruction files but no shared context hub.\n\nDetected files:\n%s\n\nOffer to set up one shared context hub. Explain that this will:\n- create `.ctx/SUPERCTX.md` as the canonical project context\n- back up the originals under `.ctx/sources/`\n- replace the live instruction files with generated shims pointing to the hub\n\nAsk for explicit consent before doing anything. After the user confirms, perform setup internally without asking them to type a command.\n' "$candidate_list"
   fi
 fi

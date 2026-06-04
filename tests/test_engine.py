@@ -1318,3 +1318,28 @@ def test_hook_session_start_states(tmp_path):
     assert "installation has broken or missing shims" in res3.stdout
     assert "/superctx:sync" in res3.stdout
     assert "check and repair" in res3.stdout
+
+    # 4. Candidate repo -> state candidate_repo, consent-based offer with file list
+    d4 = tmp_path / "case4"
+    d4.mkdir()
+    # Write a known instruction file so detection fires
+    claude_dir = d4 / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
+
+    res4 = subprocess.run(
+        ["bash", str(hook_path)],
+        cwd=d4,
+        env=env,
+        capture_output=True,
+        text=True
+    )
+    assert res4.returncode == 0
+    assert "setup opportunity" in res4.stdout
+    assert ".claude/CLAUDE.md" in res4.stdout
+    assert "explicit consent" in res4.stdout
+    assert "`.ctx/SUPERCTX.md`" in res4.stdout
+    assert "`.ctx/sources/`" in res4.stdout
+    assert "generated shims" in res4.stdout
+    # Must NOT mention /superctx:init at all — user should not need to type a command
+    assert "/superctx:init" not in res4.stdout
