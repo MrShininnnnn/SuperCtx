@@ -87,16 +87,21 @@ Claude Code copies marketplace plugins into Claude's local plugin cache. After i
 
 ### Load the plugin in Claude Code
 
-After installation, the SuperCtx skills are available as slash commands:
+After installation, the primary command to check context health is:
 
 ```text
-/superctx:init
-/superctx:sync
 /superctx:status
-/superctx:add <path>
 ```
 
-Run those commands from a repository that has one or more context files such as `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`.
+> [!NOTE]
+> SuperCtx is agent-guided. Use `/superctx:status` to check health. The agent will guide setup, add, and repair when needed.
+
+For advanced usage or agent-invoked operations, the following commands are also available:
+
+- `/superctx:init`: Scaffold/migrate the context hub.
+- `/superctx:sync`: Repair generated shims.
+- `/superctx:add <path>`: Register a new local instruction file.
+
 
 ### Coming Soon: Claude Community Marketplace
 

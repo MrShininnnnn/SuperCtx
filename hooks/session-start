@@ -13,17 +13,23 @@ fi
 state_json=$(PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx status --detect 2>/dev/null || true)
 
 if [[ -n "$state_json" ]]; then
-  # Parse state safely from stdin using python
-  state=$(printf '%s' "$state_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("state", "not_candidate"))' 2>/dev/null || true)
+  # Parse state and recommended_action safely from stdin using python
+  read -r state action <<<$(printf '%s' "$state_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("state", "not_candidate"), d.get("recommended_action", "none"))' 2>/dev/null || true)
 
   if [[ "$state" == "managed_healthy" ]]; then
     cat <<'EOF'
 SuperCtx is active. `.ctx/SUPERCTX.md` is the canonical shared project context. Registered tool instruction files are generated shims pointing to it. Use `/superctx:status` to check health.
 EOF
   elif [[ "$state" == "managed_needs_repair" ]]; then
-    cat <<'EOF'
+    if [[ "$action" == "repair" ]]; then
+      cat <<'EOF'
 SuperCtx is active, but the installation has broken or missing shims. Run `/superctx:status` and `/superctx:sync` to check and repair.
 EOF
+    else
+      cat <<'EOF'
+SuperCtx is present, but the configuration manifest is missing or invalid. Run `/superctx:status` to inspect.
+EOF
+    fi
   elif [[ "$state" == "managed_legacy" ]]; then
     cat <<'EOF'
 SuperCtx is present, but some instruction files are legacy and not yet fully migrated. Treat this as a migration state: inspect with `/superctx:status`, preserve existing instruction contents, and do not run setup or remove `.ctx` without explicit user-approved migration steps.

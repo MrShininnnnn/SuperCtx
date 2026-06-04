@@ -50,11 +50,46 @@ def read_text(path: Path) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
+import os
+
+
+class SchemaError(ValueError):
+    """Raised when the manifest schema is invalid or has unsafe paths."""
+    pass
+
+
 # --- manifest ---------------------------------------------------------------
 
 def load_manifest(project_dir: Path) -> dict:
     with manifest_path(project_dir).open("rb") as fh:
-        return tomllib.load(fh)
+        data = tomllib.load(fh)
+
+    if not isinstance(data, dict):
+        raise SchemaError("Manifest root must be a table")
+
+    if "files" in data:
+        if not isinstance(data["files"], list):
+            raise SchemaError("Manifest 'files' must be an array")
+        for entry in data["files"]:
+            if not isinstance(entry, dict):
+                raise SchemaError("Manifest 'files' entry must be a table")
+            if "path" not in entry:
+                raise SchemaError("Manifest 'files' entry is missing required 'path'")
+            path_str = entry["path"]
+            if not isinstance(path_str, str) or not path_str.strip():
+                raise SchemaError("Manifest 'files' entry 'path' must be a non-empty string")
+
+            # Safety check: Reject absolute paths or paths escaping the project root
+            if Path(path_str).is_absolute():
+                raise SchemaError(f"Manifest 'files' path cannot be absolute: {path_str}")
+            norm = os.path.normpath(path_str)
+            if norm.startswith("..") or norm.startswith("/") or norm == "..":
+                raise SchemaError(f"Manifest 'files' path escapes repository root: {path_str}")
+
+            if "tools" in entry and not isinstance(entry["tools"], list):
+                raise SchemaError("Manifest 'files' entry 'tools' must be an array")
+
+    return data
 
 
 def _toml_str(value: str) -> str:
