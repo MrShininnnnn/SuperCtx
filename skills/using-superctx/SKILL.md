@@ -1,6 +1,6 @@
 ---
-name: superctx:using-superctx
-description: Use when entering a repository with a .ctx/ hub, or when the user asks about project context, agent instructions, tool configuration, sync, health, candidates, broken shims, or cross-tool context.
+name: using-superctx
+description: Use when entering a repository with a .ctx/ hub, or when the user asks about project context, agent instructions, tool configuration, health, candidates, broken shims, repair, or cross-tool context.
 ---
 
 # SuperCtx Reference Guide (Agent Reference / Advanced)
