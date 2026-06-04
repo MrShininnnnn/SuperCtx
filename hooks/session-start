@@ -1,14 +1,36 @@
 #!/usr/bin/env bash
 # SuperCtx discovery hook.
-#
-# Runs at SessionStart. If this project has a SuperCtx hub, tell the agent so it reads the
-# centralized cross-tool context. Silent (no output) when there is no hub — most projects.
-# Read-only: this never writes anything.
+# Runs at SessionStart. Read-only: this never writes anything.
 
 set -euo pipefail
 
-if [[ -f ".ctx/SUPERCTX.md" || -f ".ctx/manifest.toml" ]]; then
-  cat <<'EOF'
+# Safely check if CLAUDE_PLUGIN_ROOT is set
+if [[ -z "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
+  exit 0
+fi
+
+# Run read-only detection using Python CLI, silencing stderr
+state_json=$(PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx status --detect 2>/dev/null || true)
+
+if [[ -n "$state_json" ]]; then
+  # Parse state safely from stdin using python
+  state=$(printf '%s' "$state_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("state", "not_candidate"))' 2>/dev/null || true)
+
+  if [[ "$state" == "managed_healthy" ]]; then
+    cat <<'EOF'
 SuperCtx is active. `.ctx/SUPERCTX.md` is the canonical shared project context. Registered tool instruction files are generated shims pointing to it. Use `/superctx:status` to check health.
 EOF
+  elif [[ "$state" == "managed_needs_repair" ]]; then
+    cat <<'EOF'
+SuperCtx is active, but the installation has broken or missing shims. Run `/superctx:status` and `/superctx:sync` to check and repair.
+EOF
+  elif [[ "$state" == "managed_legacy" ]]; then
+    cat <<'EOF'
+SuperCtx is present, but some instruction files are legacy and not yet fully migrated. Treat this as a migration state: inspect with `/superctx:status`, preserve existing instruction contents, and do not run setup or remove `.ctx` without explicit user-approved migration steps.
+EOF
+  elif [[ "$state" == "candidate_repo" ]]; then
+    cat <<'EOF'
+SuperCtx setup opportunity: This repository contains standard agent instruction files but does not have a shared context hub. If the user asks about project instructions, tool consistency, or shared context, offer to run setup.
+EOF
+  fi
 fi

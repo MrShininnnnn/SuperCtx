@@ -129,27 +129,18 @@ If updating does not resolve issues or if you suspect a cached or stale version 
 
 As a last resort if plugin caches persist, you can manually clear the Claude plugin cache directories under your user home profile.
 
-## Quick Start
+## Onboarding & Guided Setup
 
-Inside Claude Code:
+SuperCtx is designed to be agent-guided:
+1. When a session starts in a repository with standard instruction files, the agent automatically detects the setup opportunity.
+2. The agent will ask for your explicit consent to initialize SuperCtx.
+3. Once initialized, the agent uses `.ctx/SUPERCTX.md` automatically for project context.
 
-```text
-/superctx:init
-/superctx:status
-```
+For explicit setup, run `/superctx:init`.
 
-The workflow:
+You can also run `/superctx:status` to check context link health (clean output: `All SuperCtx context links are healthy.`), or `/superctx:sync` to repair shims.
 
-1. `/superctx:init` scans the project for known tool instruction files, populates `.ctx/SUPERCTX.md` with their contents, backs them up under `.ctx/sources/`, and replaces them with generated shims.
-2. `/superctx:status` reports structural integrity and health of the hub, registered shims, backups, and untracked candidates.
-
-Healthy output:
-
-```text
-All SuperCtx context links are healthy.
-```
-
-Problem output (only shown when action is needed):
+Problem output is only shown when action is needed:
 
 ```text
 Shim issues:
