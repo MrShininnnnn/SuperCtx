@@ -30,7 +30,7 @@ EOF
   elif [[ "$state" == "managed_needs_repair" ]]; then
     if [[ "$action" == "repair" ]]; then
       cat <<'EOF'
-SuperCtx is active, but the installation has broken or missing shims. Run `/superctx:status` and `/superctx:sync` to check and repair.
+SuperCtx is active, but the installation has broken or missing shims. Run `/superctx:status` to check and repair.
 EOF
     else
       cat <<'EOF'

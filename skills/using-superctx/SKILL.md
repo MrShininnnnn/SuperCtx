@@ -29,7 +29,7 @@ SuperCtx provides a central project-local context layer using a hub-and-shim mod
 2. **Announce SuperCtx interactions.** When SuperCtx is relevant or actively shaping the work, announce in one short sentence before taking action:
    `Using SuperCtx to <purpose>.`
    Keep the announcement task-specific.
-3. **Do NOT ask users to manually edit `manifest.toml` or `SUPERCTX.md` as the happy path.** Prefer agent action and SuperCtx commands.
+3. **Do NOT ask users to manually edit `manifest.toml` or `SUPERCTX.md`, or manually run `/superctx:init`, `/superctx:add`, or `/superctx:sync` as the happy path unless they explicitly ask for commands.** Prefer agent action and internal command execution. If `/superctx:status` finds setup, add, repair, or migration opportunities, offer the action in natural language and ask for consent.
 4. **Avoid saying "sync context" unless actually running `/superctx:sync`.** The sync command is strictly for shim repair, not general context updates.
 5. **Do NOT import `.ctx/sources/` backups as active context.** Agents must not read or load files from `.ctx/sources/` as active context. SuperCtx internals may read them for recovery and status checks.
 6. **Do NOT edit generated shims as the source of truth.** Tool-specific files are thin generated pointers to `.ctx/SUPERCTX.md`.
@@ -48,7 +48,7 @@ SuperCtx provides a central project-local context layer using a hub-and-shim mod
 
    Once the user confirms, run `/superctx:init`. If the user declines, leave the repo unchanged.
 9. **Guide legacy or broken setups to repair/migration/inspection.**
-   - If the state is `managed_needs_repair` and the recommended action is `repair`, run `/superctx:status` and `/superctx:sync` to restore shims from the hub.
+   - If the state is `managed_needs_repair` and the recommended action is `repair`, offer to repair the broken or missing shims and run `/superctx:sync` internally after getting consent.
    - If the state is `managed_needs_repair` and the recommended action is `inspect` (due to missing or invalid manifest), explain the problem clearly and do not run `sync` or `init`.
    - If the state is `managed_legacy`, explain the situation clearly, warning that migration/recovery is required. Preserve existing instruction contents and use explicit user-approved migration steps; do not delete `.ctx` or run a fresh setup ad hoc.
    Never run `/superctx:init` or mutate files on a repair/migration state without explicit user consent.

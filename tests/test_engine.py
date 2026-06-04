@@ -1181,6 +1181,192 @@ def test_cli_status_detect_manifest_errors(tmp_path):
         sys.stdout = orig_stdout
 
 
+def test_cli_status_manifest_errors_no_detect(tmp_path):
+    from superctx.__main__ import main
+    import sys
+    from io import StringIO
+    from superctx import core
+
+    orig_argv = sys.argv
+    orig_stdout = sys.stdout
+    try:
+        sys.argv = ["superctx", "status"]
+        sys.stdout = StringIO()
+        import os
+        orig_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
+
+            # 1. Malformed TOML
+            core.manifest_path(tmp_path).write_text("invalid toml syntax = {broken\n", encoding="utf-8")
+            sys.stdout = StringIO()
+            exit_code = main()
+            assert exit_code == 0
+            output = sys.stdout.getvalue()
+            assert "configuration manifest or hub is missing or invalid" in output
+            assert "offer to inspect the setup" in output
+
+            # 2. Schema-invalid TOML
+            core.manifest_path(tmp_path).write_text("files = 'not a list'\n", encoding="utf-8")
+            sys.stdout = StringIO()
+            exit_code = main()
+            assert exit_code == 0
+            output = sys.stdout.getvalue()
+            assert "configuration manifest is invalid" in output
+            assert "offer to inspect the setup" in output
+        finally:
+            os.chdir(orig_cwd)
+    finally:
+        sys.argv = orig_argv
+        sys.stdout = orig_stdout
+
+
+def test_cli_status_agent_guided_output_paths(tmp_path):
+    from superctx.__main__ import main
+    import sys
+    from io import StringIO
+    from superctx import core
+
+    orig_argv = sys.argv
+    orig_stdout = sys.stdout
+    try:
+        import os
+        orig_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            # 1. Candidate repo
+            d_cand = tmp_path / "cand"
+            d_cand.mkdir()
+            (d_cand / ".claude").mkdir()
+            (d_cand / ".claude" / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
+
+            os.chdir(d_cand)
+            sys.argv = ["superctx", "status"]
+            sys.stdout = StringIO()
+            exit_code = main()
+            assert exit_code == 0
+            output = sys.stdout.getvalue()
+            assert "Detected candidate instruction files" in output
+            assert "Recommended action: Offer to set up SuperCtx (with explicit consent)." in output
+            assert "/superctx:init" not in output
+
+            # 2. Broken shim
+            d_broken = tmp_path / "broken"
+            d_broken.mkdir()
+            (d_broken / ".claude").mkdir()
+            (d_broken / ".claude" / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
+            os.chdir(d_broken)
+            main(["init"])
+            # Break shim
+            (d_broken / ".claude" / "CLAUDE.md").write_text("broken shim content", encoding="utf-8")
+
+            sys.argv = ["superctx", "status"]
+            sys.stdout = StringIO()
+            exit_code = main()
+            assert exit_code == 0
+            output = sys.stdout.getvalue()
+            assert "Shim issues" in output
+            assert "Recommended action: Offer to repair shims (with explicit consent)." in output
+            assert "/superctx:sync" not in output
+
+            # 3. Untracked candidate
+            d_untracked = tmp_path / "untracked"
+            d_untracked.mkdir()
+            (d_untracked / ".claude").mkdir()
+            (d_untracked / ".claude" / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
+            os.chdir(d_untracked)
+            main(["init"])
+            # Create untracked local convention candidate
+            (d_untracked / ".agy").mkdir()
+            (d_untracked / ".agy" / "ANTIGRAVITY.md").write_text("# Instructions", encoding="utf-8")
+
+            sys.argv = ["superctx", "status"]
+            sys.stdout = StringIO()
+            exit_code = main()
+            assert exit_code == 0
+            output = sys.stdout.getvalue()
+            assert "Untracked candidates" in output
+            assert "Recommended action: Offer to connect this file (with explicit consent)." in output
+            assert "/superctx:add" not in output
+
+            # 4. Missing hub
+            d_mishub = tmp_path / "mishub"
+            d_mishub.mkdir()
+            (d_mishub / ".claude").mkdir()
+            (d_mishub / ".claude" / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
+            os.chdir(d_mishub)
+            main(["init"])
+            # Delete hub
+            core.hub_path(d_mishub).unlink()
+
+            sys.argv = ["superctx", "status"]
+            sys.stdout = StringIO()
+            exit_code = main()
+            assert exit_code == 0
+            output = sys.stdout.getvalue()
+            assert "Hub missing" in output
+            assert "Recommended action: Explain the problem and offer to inspect the setup (automatic recovery not supported)." in output
+            assert "/superctx:init" not in output
+
+            # 5. Legacy state
+            d_legacy = tmp_path / "legacy"
+            d_legacy.mkdir()
+            os.chdir(d_legacy)
+            core.ctx_dir(d_legacy).mkdir()
+            core.manifest_path(d_legacy).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+            (d_legacy / "CLAUDE.md").write_text("unbacked legacy contents", encoding="utf-8")
+
+            sys.argv = ["superctx", "status"]
+            sys.stdout = StringIO()
+            exit_code = main()
+            assert exit_code == 0
+            output = sys.stdout.getvalue()
+            assert "SuperCtx is present, but some instruction files are legacy" in output
+            assert "Recommended action: Offer to migrate/recover the legacy SuperCtx setup (with explicit consent)." in output
+        finally:
+            os.chdir(orig_cwd)
+    finally:
+        sys.argv = orig_argv
+        sys.stdout = orig_stdout
+
+
+def test_cli_status_corrupt_non_utf8_hub_no_traceback(tmp_path):
+    from superctx.__main__ import main
+    import sys
+    from io import StringIO
+    from superctx import core
+
+    orig_argv = sys.argv
+    orig_stdout = sys.stdout
+    try:
+        sys.argv = ["superctx", "status"]
+        sys.stdout = StringIO()
+        import os
+        orig_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
+            core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+            # Write invalid UTF-8 bytes to SUPERCTX.md
+            core.hub_path(tmp_path).write_bytes(b"\x80\xff\xfe")
+
+            sys.stdout = StringIO()
+            exit_code = main()
+            assert exit_code == 0
+            output = sys.stdout.getvalue()
+            assert "configuration manifest or hub is missing or invalid" in output
+            assert "offer to inspect the setup" in output
+        finally:
+            os.chdir(orig_cwd)
+    finally:
+        sys.argv = orig_argv
+        sys.stdout = orig_stdout
+
+
+
+
+
 def test_sync_manifest_errors(tmp_path):
     import pytest
     from superctx.sync import run, SyncError
@@ -1316,7 +1502,7 @@ def test_hook_session_start_states(tmp_path):
     )
     assert res3.returncode == 0
     assert "installation has broken or missing shims" in res3.stdout
-    assert "/superctx:sync" in res3.stdout
+    assert "/superctx:status" in res3.stdout
     assert "check and repair" in res3.stdout
 
     # 4. Candidate repo -> state candidate_repo, consent-based offer with file list

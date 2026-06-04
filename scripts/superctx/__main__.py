@@ -11,6 +11,7 @@ import json
 import sys
 from pathlib import Path
 
+from . import core
 from . import init as init_cmd
 from . import status as status_cmd
 from . import sync as sync_cmd
@@ -131,6 +132,9 @@ def _cmd_status(project_dir: Path, detect: bool = False) -> int:
         print(json.dumps(state))
         return 0
     try:
+        from .status import detect_repo_state
+        state = detect_repo_state(project_dir)
+
         diag = status_cmd.diagnostics(project_dir)
 
         if diag["stale_install"]:
@@ -142,22 +146,41 @@ def _cmd_status(project_dir: Path, detect: bool = False) -> int:
             convs_str = " and ".join(stale_convs)
             support_it_them = "them" if len(stale_convs) > 1 else "it"
             print(f"WARNING: Stale installation detected! The project uses {convs_str} but the active plugin registry does not support {support_it_them}.")
-            print("To update to the latest version, run:")
-            print("  /plugin marketplace update superctx")
-            print("  /plugin update superctx")
-            print("  /reload-plugins")
+            print("Recommended action: Offer to update/reinstall the plugin.")
             print()
-            print("If updating does not resolve the issue, reinstall the plugin:")
-            print("  /plugin uninstall superctx")
-            print("  /plugin install superctx@superctx")
-            print("  /reload-plugins")
+
+        if state["state"] == "candidate_repo":
+            print("SuperCtx is installed but not yet initialized for this project.")
+            print("No hub (.ctx/SUPERCTX.md) exists.")
+            print("No files are tracked yet.")
             print()
+            print("Detected candidate instruction files:")
+            for cand in state["candidates"]:
+                print(f"- {cand}")
+            print()
+            print("Recommended action: Offer to set up SuperCtx (with explicit consent).")
+            return 0
+        elif state["state"] == "not_candidate":
+            print("SuperCtx: no tracked files. No candidate instruction files found.")
+            return 0
 
         rows = status_cmd.run(project_dir)
     except status_cmd.StatusError:
-        print("SuperCtx: no tracked files. Run /superctx:init first.")
+        if core.ctx_dir(project_dir).is_dir():
+            print("SuperCtx is present, but the configuration manifest is missing or invalid.")
+            print("Recommended action: Explain the problem and offer to inspect the setup.")
+            return 0
+        print("SuperCtx: no tracked files. No candidate instruction files found.")
+        return 0
+    except core.SchemaError:
+        print("SuperCtx is present, but the configuration manifest is invalid.")
+        print("Recommended action: Explain the problem and offer to inspect the setup.")
         return 0
     except Exception as e:
+        if core.ctx_dir(project_dir).is_dir():
+            print("SuperCtx is present, but the configuration manifest or hub is missing or invalid.")
+            print("Recommended action: Explain the problem and offer to inspect the setup.")
+            return 0
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
@@ -175,14 +198,19 @@ def _cmd_status(project_dir: Path, detect: bool = False) -> int:
         print("All SuperCtx context links are healthy.")
         return 0
 
+    if state["state"] == "managed_legacy":
+        print("SuperCtx is present, but some instruction files are legacy and not yet fully migrated.")
+        print("Recommended action: Offer to migrate/recover the legacy SuperCtx setup (with explicit consent).")
+        print()
+
     # Hub problems
     if hub_row and hub_row["state"] != "healthy":
         if hub_row["state"] == "missing_hub":
             print(f"Hub missing: {hub_row['path']}")
-            print("  Run /superctx:init to create the hub.")
+            print("  Recommended action: Explain the problem and offer to inspect the setup (automatic recovery not supported).")
         elif hub_row["state"] == "empty_hub":
             print(f"Hub empty: {hub_row['path']}")
-            print("  Run /superctx:sync to repopulate shims, or add content to .ctx/SUPERCTX.md.")
+            print("  Recommended action: Explain the problem and offer to inspect the setup (automatic recovery not supported).")
         print()
 
     # Shim problems
@@ -191,7 +219,7 @@ def _cmd_status(project_dir: Path, detect: bool = False) -> int:
         print("Shim issues:")
         for row in broken_shims:
             print(f"  ! {row['path']} — shim missing or broken")
-        print("  Run /superctx:sync to repair.")
+        print("  Recommended action: Offer to repair shims (with explicit consent).")
         print()
 
     # Backup problems
@@ -207,7 +235,7 @@ def _cmd_status(project_dir: Path, detect: bool = False) -> int:
         print("Untracked candidates:")
         for row in candidate_rows:
             print(f"  ? {row['path']}")
-            print(f"    Run /superctx:add {row['path']} to connect it.")
+            print(f"    Recommended action: Offer to connect this file (with explicit consent).")
         print()
 
     return 0
