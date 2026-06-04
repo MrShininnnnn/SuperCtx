@@ -3,9 +3,9 @@ name: superctx:using-superctx
 description: Use when entering a repository with a .ctx/ hub, or when the user asks about project context, agent instructions, tool configuration, sync, health, candidates, broken shims, or cross-tool context.
 ---
 
-# SuperCtx Reference Guide
+# SuperCtx Reference Guide (Agent Reference / Advanced)
 
-This skill orients coding agents on how to interact with the project-local SuperCtx context hub.
+This is an agent reference and advanced skill. Normal users do not need to run this; the agent uses it automatically to orient itself on how to interact with the project-local SuperCtx context hub.
 
 ## When to Use
 
