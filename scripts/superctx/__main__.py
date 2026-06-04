@@ -7,6 +7,7 @@ project_dir is the current working directory (the user's project).
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -126,7 +127,6 @@ def _cmd_sync(project_dir: Path) -> int:
 def _cmd_status(project_dir: Path, detect: bool = False) -> int:
     if detect:
         from .status import detect_repo_state
-        import json
         state = detect_repo_state(project_dir)
         print(json.dumps(state))
         return 0

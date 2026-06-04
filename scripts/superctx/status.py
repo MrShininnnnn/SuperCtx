@@ -240,7 +240,7 @@ def detect_repo_state(project_dir: Path) -> dict:
                         is_legacy = True
 
             if is_legacy:
-                reasons.append("unbacked_live_files_found")
+                reasons.append("unbacked_live_file")
             state = "managed_legacy" if is_legacy else "managed_needs_repair"
             rec_action = "migrate" if is_legacy else "repair"
             return {
@@ -265,7 +265,7 @@ def detect_repo_state(project_dir: Path) -> dict:
                         is_legacy = True
 
             if is_legacy:
-                reasons.append("unbacked_live_files_found")
+                reasons.append("unbacked_live_file")
             state = "managed_legacy" if is_legacy else "managed_needs_repair"
             rec_action = "migrate" if is_legacy else "repair"
             return {
@@ -317,7 +317,7 @@ def detect_repo_state(project_dir: Path) -> dict:
         critical_reasons = [r for r in reasons if r != "untracked_candidates_found"]
 
         if is_legacy:
-            reasons.append("unbacked_live_files_found")
+            reasons.append("unbacked_live_file")
             state = "managed_legacy"
             rec_action = "migrate"
         elif critical_reasons:

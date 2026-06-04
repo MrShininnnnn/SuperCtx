@@ -990,6 +990,8 @@ def test_detect_repo_state_managed_legacy(tmp_path):
 
 def test_detect_repo_state_is_read_only(tmp_path):
     from superctx.status import detect_repo_state
+    from superctx import core, shim
+
     (tmp_path / "CLAUDE.md").write_text("context", encoding="utf-8")
 
     def snapshot(dir_path):
@@ -1001,11 +1003,29 @@ def test_detect_repo_state_is_read_only(tmp_path):
                 state[str(path.relative_to(dir_path))] = "dir"
         return state
 
-    before = snapshot(tmp_path)
-    res = detect_repo_state(tmp_path)
-    assert res["state"] == "candidate_repo"
-    after = snapshot(tmp_path)
-    assert before == after
+    # Test candidate_repo path
+    before_cand = snapshot(tmp_path)
+    res_cand = detect_repo_state(tmp_path)
+    assert res_cand["state"] == "candidate_repo"
+    after_cand = snapshot(tmp_path)
+    assert before_cand == after_cand
+
+    # Setup healthy managed repo
+    core.manifest_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+    core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.hub_path(tmp_path).write_text("# Shared Context", encoding="utf-8")
+    shim_content = shim.generate_shim("CLAUDE.md", "claude-at-import")
+    (tmp_path / "CLAUDE.md").write_text(shim_content, encoding="utf-8")
+    (core.sources_dir(tmp_path) / "CLAUDE.md").parent.mkdir(parents=True, exist_ok=True)
+    (core.sources_dir(tmp_path) / "CLAUDE.md").write_text("original content", encoding="utf-8")
+
+    # Test managed_healthy path
+    before_managed = snapshot(tmp_path)
+    res_managed = detect_repo_state(tmp_path)
+    assert res_managed["state"] == "managed_healthy"
+    after_managed = snapshot(tmp_path)
+    assert before_managed == after_managed
+
 
 
 def test_cli_status_detect(tmp_path):
@@ -1048,5 +1068,20 @@ def test_detect_repo_state_managed_legacy_manifest_missing(tmp_path):
     res = detect_repo_state(tmp_path)
     assert res["state"] == "managed_legacy"
     assert "manifest_missing" in res["reasons"]
-    assert "unbacked_live_files_found" in res["reasons"]
+    assert "unbacked_live_file" in res["reasons"]
     assert res["recommended_action"] == "migrate"
+
+
+def test_detect_repo_state_managed_needs_repair_missing_both(tmp_path):
+    from superctx.status import detect_repo_state
+    from superctx import core
+    core.manifest_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
+    core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.hub_path(tmp_path).write_text("# Shared Context", encoding="utf-8")
+
+    # Live shim CLAUDE.md is not created, and backup is not created either.
+    res = detect_repo_state(tmp_path)
+    assert res["state"] == "managed_needs_repair"
+    assert "missing_shim" in res["reasons"]
+    assert "missing_backup" in res["reasons"]
+    assert res["recommended_action"] == "repair"

@@ -138,7 +138,7 @@ SuperCtx is designed to be agent-guided:
 
 For explicit setup, run `/superctx:init`.
 
-You can also run `/superctx:status` to check context link health, or `/superctx:sync` to repair shims.
+You can also run `/superctx:status` to check context link health (clean output: `All SuperCtx context links are healthy.`), or `/superctx:sync` to repair shims.
 
 Problem output is only shown when action is needed:
 
