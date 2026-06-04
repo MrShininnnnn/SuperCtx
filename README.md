@@ -43,11 +43,11 @@ The `.ctx/` folder is the centralized hub for project context. SuperCtx makes `.
                └─> GEMINI.md (shim)
 ```
 
-`SUPERCTX.md` is a version-controlled, hand-editable Markdown file that serves as the single source of truth. Original tool instruction files are backed up and converted to thin referential shims.
+`SUPERCTX.md` is a version-controlled Markdown file and the canonical shared context hub. You can edit it directly, but the normal workflow is to ask the agent to update project context. Original tool instruction files are backed up and converted to thin referential shims.
 
 ### Agent-Native Bootstrapping
 
-SuperCtx includes a built-in agent reference skill, `/superctx:using-superctx`. Run it when working in a SuperCtx-enabled repository to orient Claude Code on the current project's context boundaries and active files.
+SuperCtx includes a built-in agent reference skill, `/superctx:using-superctx`. This is an agent reference / advanced skill. Normal users do not need to run this command; the agent uses it automatically to orient itself on the project's context boundaries and active files.
 
 When SuperCtx is active, the agent uses `.ctx/SUPERCTX.md` as shared project context through generated shims. You normally ask the agent to update project context naturally instead of managing Markdown or TOML by hand.
 
@@ -94,9 +94,9 @@ After installation, the primary command to check context health is:
 ```
 
 > [!NOTE]
-> SuperCtx is agent-guided. Use `/superctx:status` to check health. The agent will guide setup, add, and repair when needed.
+> SuperCtx is fully agent-guided. Use `/superctx:status` to check health. The agent will guide setup, add, and repair when needed. Normal users do not need to operate the other commands directly.
 
-For advanced usage or agent-invoked operations, the following commands are also available:
+For advanced troubleshooting or developer verification, the following commands are available:
 
 - `/superctx:init`: Scaffold/migrate the context hub.
 - `/superctx:sync`: Repair generated shims.
@@ -114,9 +114,9 @@ If accepted into the Claude community marketplace, SuperCtx will be installable 
 
 Until then, use the GitHub installation path above.
 
-## Updating SuperCtx
+## Troubleshooting stale plugin installs
 
-To update SuperCtx to the latest version, run the following commands inside Claude Code:
+If you suspect a cached or stale version is running, or if you need to force-update SuperCtx to the latest version, run the following troubleshooting commands inside Claude Code:
 
 ```text
 /plugin marketplace update superctx
@@ -124,7 +124,7 @@ To update SuperCtx to the latest version, run the following commands inside Clau
 /reload-plugins
 ```
 
-If updating does not resolve issues or if you suspect a cached or stale version is running, uninstall and reinstall the plugin to force-clear the local cache:
+To force-clear the local cache and reinstall the plugin:
 
 ```text
 /plugin uninstall superctx
@@ -136,26 +136,13 @@ As a last resort if plugin caches persist, you can manually clear the Claude plu
 
 ## Onboarding & Guided Setup
 
-SuperCtx is designed to be agent-guided:
-1. When a session starts in a repository with standard instruction files, the agent automatically detects the setup opportunity.
-2. The agent will ask for your explicit consent to initialize SuperCtx.
-3. Once initialized, the agent uses `.ctx/SUPERCTX.md` automatically for project context.
+SuperCtx is fully agent-guided. Under normal operation, the user does not need to run setup, add, or repair commands. The agent handles these operations internally after obtaining your explicit consent before making any changes.
 
-For explicit setup, run `/superctx:init`.
+1. **Setup**: When a session starts in a candidate repository with standard instruction files, the agent automatically detects it, explains what changes will be made, and asks for your consent to set up SuperCtx.
+2. **Connecting Files**: If you add new local context files (such as `.agy/ANTIGRAVITY.md`), the agent will notice them and ask if you want to connect them.
+3. **Repairing Shims**: If a generated shim is broken or missing, the agent will detect the issue and ask for your consent to repair it.
 
-You can also run `/superctx:status` to check context link health (clean output: `All SuperCtx context links are healthy.`), or `/superctx:sync` to repair shims.
-
-Problem output is only shown when action is needed:
-
-```text
-Shim issues:
-  ! .claude/CLAUDE.md — shim missing or broken
-  Run /superctx:sync to repair.
-
-Untracked candidates:
-  ? .agy/ANTIGRAVITY.md
-    Run /superctx:add .agy/ANTIGRAVITY.md to connect it.
-```
+If you want to manually verify the state of SuperCtx at any time, run `/superctx:status`. Advanced or agent-guided commands like `/superctx:sync` and `/superctx:add` will output details when actions are required.
 
 ## Command Discovery and Namespace Safety
 
@@ -163,13 +150,14 @@ SuperCtx commands are registered under the `superctx:` namespace to avoid collid
 
 After installing or reloading the plugin (`/reload-plugins`), you can verify command discovery:
 
-**Type `/superctx` in Claude Code** — the command palette should show only:
+**Type `/superctx` in Claude Code** — the command palette will show the available commands and skills. While normal users only need to operate `/superctx:status`, you will see:
 
 ```text
-/superctx:init
-/superctx:sync
-/superctx:status
-/superctx:add
+/superctx:status           - Check shared context connection and link health
+/superctx:using-superctx   - Agent reference / advanced skill guide
+/superctx:init             - (Advanced) Scaffold/migrate the context hub
+/superctx:sync             - (Advanced) Repair generated shims
+/superctx:add              - (Advanced) Register a new local instruction file
 ```
 
 **Type `/status`** — only the Claude Code built-in status command should appear. SuperCtx does not register an unprefixed `/status` command.
@@ -206,7 +194,7 @@ SuperCtx is in early development. The first version focuses on one practical tas
 
 The current implementation includes:
 
-- `init`, `sync`, and `status`
+- agent-guided setup/add/repair operations plus `/superctx:status` as the normal health command
 - auto-detection of known tool instruction files
 - a deterministic Python engine using the standard library
 - shim repair for missing or broken registered instruction files
