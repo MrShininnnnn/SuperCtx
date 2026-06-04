@@ -1341,5 +1341,5 @@ def test_hook_session_start_states(tmp_path):
     assert "`.ctx/SUPERCTX.md`" in res4.stdout
     assert "`.ctx/sources/`" in res4.stdout
     assert "generated shims" in res4.stdout
-    # Must NOT tell user to run the command manually
-    assert "run /superctx:init" not in res4.stdout
+    # Must NOT mention /superctx:init at all — user should not need to type a command
+    assert "/superctx:init" not in res4.stdout

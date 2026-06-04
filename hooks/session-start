@@ -48,6 +48,6 @@ import sys
 paths = sys.stdin.read().strip().split(",")
 print("\n".join("- " + p for p in paths if p))
 ' 2>/dev/null || true)
-    printf 'SuperCtx setup opportunity: This repository has agent instruction files but no shared context hub.\n\nDetected files:\n%s\n\nOffer to set up one shared context hub. Explain that this will:\n- create `.ctx/SUPERCTX.md` as the canonical project context\n- back up the originals under `.ctx/sources/`\n- replace the live instruction files with generated shims pointing to the hub\n\nAsk for explicit consent before running setup. Do not run `/superctx:init` until the user confirms. After consent, run `/superctx:init`.\n' "$candidate_list"
+    printf 'SuperCtx setup opportunity: This repository has agent instruction files but no shared context hub.\n\nDetected files:\n%s\n\nOffer to set up one shared context hub. Explain that this will:\n- create `.ctx/SUPERCTX.md` as the canonical project context\n- back up the originals under `.ctx/sources/`\n- replace the live instruction files with generated shims pointing to the hub\n\nAsk for explicit consent before doing anything. After the user confirms, perform setup internally without asking them to type a command.\n' "$candidate_list"
   fi
 fi
