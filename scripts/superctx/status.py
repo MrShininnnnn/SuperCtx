@@ -242,38 +242,41 @@ def detect_repo_state(project_dir: Path) -> dict:
             if is_legacy:
                 reasons.append("unbacked_live_file")
             state = "managed_legacy" if is_legacy else "managed_needs_repair"
-            rec_action = "migrate" if is_legacy else "repair"
+            rec_action = "migrate" if is_legacy else "inspect"
             return {
                 "state": state,
                 "candidates": sorted(candidates),
                 "reasons": sorted(reasons),
                 "recommended_action": rec_action,
-                "recommended_action_mutates_files": True
+                "recommended_action_mutates_files": (rec_action == "migrate")
             }
 
-        # Check manifest readability
+        # Check manifest readability and schema validation
+        manifest = None
+        manifest_unreadable = False
+        manifest_invalid = False
+
         try:
             manifest = core.load_manifest(project_dir)
+        except core.SchemaError:
+            manifest_invalid = True
         except Exception:
-            reasons.append("manifest_unreadable")
+            manifest_unreadable = True
+
+        if manifest_unreadable or manifest_invalid:
+            reasons = ["manifest_unreadable" if manifest_unreadable else "manifest_invalid"]
             candidates = []
             for entry in registry.instruction_conventions():
                 live = project_dir / entry["path"]
                 if live.is_file():
                     candidates.append(entry["path"])
-                    if not shim.is_shim_file(live):
-                        is_legacy = True
 
-            if is_legacy:
-                reasons.append("unbacked_live_file")
-            state = "managed_legacy" if is_legacy else "managed_needs_repair"
-            rec_action = "migrate" if is_legacy else "repair"
             return {
-                "state": state,
+                "state": "managed_needs_repair",
                 "candidates": sorted(candidates),
-                "reasons": sorted(reasons),
-                "recommended_action": rec_action,
-                "recommended_action_mutates_files": True
+                "reasons": reasons,
+                "recommended_action": "inspect",
+                "recommended_action_mutates_files": False
             }
 
         # Check hub file

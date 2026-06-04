@@ -22,7 +22,13 @@ def run(project_dir: Path) -> dict:
     if not manifest_path.is_file():
         raise SyncError("SuperCtx is not initialized in this project. Run 'superctx init' first.")
 
-    manifest = core.load_manifest(project_dir)
+    try:
+        manifest = core.load_manifest(project_dir)
+    except core.SchemaError as e:
+        raise SyncError(f"manifest.toml is invalid: {e}")
+    except Exception as e:
+        raise SyncError(f"manifest.toml is unreadable: {e}")
+
     healthy: list[str] = []
     repaired: list[str] = []
     unresolved: list[dict] = []

@@ -1085,3 +1085,236 @@ def test_detect_repo_state_managed_needs_repair_missing_both(tmp_path):
     assert "missing_shim" in res["reasons"]
     assert "missing_backup" in res["reasons"]
     assert res["recommended_action"] == "repair"
+
+
+def test_detect_repo_state_managed_unreadable_manifest(tmp_path):
+    from superctx.status import detect_repo_state
+    from superctx import core
+    core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
+    # Write syntactically invalid TOML
+    core.manifest_path(tmp_path).write_text("invalid toml syntax = {broken\n", encoding="utf-8")
+
+    # Create unbacked live file to see if it lists as candidate
+    (tmp_path / "CLAUDE.md").write_text("live content", encoding="utf-8")
+
+    res = detect_repo_state(tmp_path)
+    assert res["state"] == "managed_needs_repair"
+    assert res["reasons"] == ["manifest_unreadable"]
+    assert "CLAUDE.md" in res["candidates"]
+    assert res["recommended_action"] == "inspect"
+    assert res["recommended_action_mutates_files"] is False
+
+
+def test_detect_repo_state_managed_invalid_manifest(tmp_path):
+    from superctx.status import detect_repo_state
+    from superctx import core
+    core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
+
+    # Case A: files is not a list
+    core.manifest_path(tmp_path).write_text("files = 'not a list'\n", encoding="utf-8")
+    res = detect_repo_state(tmp_path)
+    assert res["state"] == "managed_needs_repair"
+    assert res["reasons"] == ["manifest_invalid"]
+    assert res["recommended_action"] == "inspect"
+    assert res["recommended_action_mutates_files"] is False
+
+    # Case B: file entry lacks a valid path
+    core.manifest_path(tmp_path).write_text("[[files]]\npath = ''\n", encoding="utf-8")
+    res = detect_repo_state(tmp_path)
+    assert res["state"] == "managed_needs_repair"
+    assert res["reasons"] == ["manifest_invalid"]
+    assert res["recommended_action"] == "inspect"
+    assert res["recommended_action_mutates_files"] is False
+
+    # Case C: tools is not a list
+    core.manifest_path(tmp_path).write_text("[[files]]\npath = 'CLAUDE.md'\ntools = 'not a list'\n", encoding="utf-8")
+    res = detect_repo_state(tmp_path)
+    assert res["state"] == "managed_needs_repair"
+    assert res["reasons"] == ["manifest_invalid"]
+    assert res["recommended_action"] == "inspect"
+    assert res["recommended_action_mutates_files"] is False
+
+
+def test_cli_status_detect_manifest_errors(tmp_path):
+    from superctx.__main__ import main
+    import sys
+    import json
+    from io import StringIO
+    from superctx import core
+
+    orig_argv = sys.argv
+    orig_stdout = sys.stdout
+    try:
+        sys.argv = ["superctx", "status", "--detect"]
+        sys.stdout = StringIO()
+        import os
+        orig_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
+
+            # 1. Malformed TOML
+            core.manifest_path(tmp_path).write_text("invalid toml syntax = {broken\n", encoding="utf-8")
+            sys.stdout = StringIO()
+            exit_code = main()
+            assert exit_code == 0
+            data = json.loads(sys.stdout.getvalue())
+            assert data["state"] == "managed_needs_repair"
+            assert data["reasons"] == ["manifest_unreadable"]
+            assert data["recommended_action"] == "inspect"
+            assert data["recommended_action_mutates_files"] is False
+
+            # 2. Schema-invalid TOML
+            core.manifest_path(tmp_path).write_text("files = 'not a list'\n", encoding="utf-8")
+            sys.stdout = StringIO()
+            exit_code = main()
+            assert exit_code == 0
+            data = json.loads(sys.stdout.getvalue())
+            assert data["state"] == "managed_needs_repair"
+            assert data["reasons"] == ["manifest_invalid"]
+            assert data["recommended_action"] == "inspect"
+            assert data["recommended_action_mutates_files"] is False
+        finally:
+            os.chdir(orig_cwd)
+    finally:
+        sys.argv = orig_argv
+        sys.stdout = orig_stdout
+
+
+def test_sync_manifest_errors(tmp_path):
+    import pytest
+    from superctx.sync import run, SyncError
+    from superctx import core
+    core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
+
+    # 1. Malformed TOML syntax
+    core.manifest_path(tmp_path).write_text("invalid toml syntax = {broken\n", encoding="utf-8")
+    with pytest.raises(SyncError) as exc:
+        run(tmp_path)
+    assert "unreadable" in str(exc.value)
+
+    # 2. Schema-invalid manifest (files is not a list)
+    core.manifest_path(tmp_path).write_text("files = 'not a list'\n", encoding="utf-8")
+    with pytest.raises(SyncError) as exc:
+        run(tmp_path)
+    assert "invalid" in str(exc.value)
+
+
+def test_detect_repo_state_managed_needs_repair_manifest_missing(tmp_path):
+    from superctx.status import detect_repo_state
+    from superctx import core
+
+    # Create .ctx directory but no manifest
+    core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
+
+    # No live files exist
+
+    res = detect_repo_state(tmp_path)
+    assert res["state"] == "managed_needs_repair"
+    assert "manifest_missing" in res["reasons"]
+    assert res["recommended_action"] == "inspect"
+    assert res["recommended_action_mutates_files"] is False
+
+
+def test_manifest_path_traversal_validation(tmp_path):
+    import pytest
+    from superctx import core
+    from superctx.core import SchemaError
+
+    core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
+
+    # 1. Absolute path traversal
+    core.manifest_path(tmp_path).write_text("[[files]]\npath = '/etc/passwd'\n", encoding="utf-8")
+    with pytest.raises(SchemaError) as exc:
+        core.load_manifest(tmp_path)
+    assert "absolute" in str(exc.value)
+
+    # 2. Relative path traversal (escaping root)
+    core.manifest_path(tmp_path).write_text("[[files]]\npath = '../outside.md'\n", encoding="utf-8")
+    with pytest.raises(SchemaError) as exc:
+        core.load_manifest(tmp_path)
+    assert "escapes repository root" in str(exc.value)
+
+    # 3. Double dot traversal resolving outside
+    core.manifest_path(tmp_path).write_text("[[files]]\npath = 'a/../../outside.md'\n", encoding="utf-8")
+    with pytest.raises(SchemaError) as exc:
+        core.load_manifest(tmp_path)
+    assert "escapes repository root" in str(exc.value)
+
+    # 4. Healthy path in manifest loads successfully
+    core.manifest_path(tmp_path).write_text("[[files]]\npath = 'a/b/healthy.md'\n", encoding="utf-8")
+    data = core.load_manifest(tmp_path)
+    assert data["files"][0]["path"] == "a/b/healthy.md"
+
+
+def test_hook_session_start_states(tmp_path):
+    import subprocess
+    import os
+    from superctx import core, shim
+
+    import sys
+    hook_path = Path(__file__).resolve().parent.parent / "hooks" / "session-start"
+    assert hook_path.is_file()
+
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(Path(__file__).resolve().parent.parent)
+    env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
+
+    # 1. Unreadable/Invalid manifest -> state managed_needs_repair, action inspect
+    d1 = tmp_path / "case1"
+    core.ctx_dir(d1).mkdir(parents=True, exist_ok=True)
+    core.manifest_path(d1).write_text("invalid toml syntax = {broken\n", encoding="utf-8")
+
+    res1 = subprocess.run(
+        ["bash", str(hook_path)],
+        cwd=d1,
+        env=env,
+        capture_output=True,
+        text=True
+    )
+    assert res1.returncode == 0
+    assert "configuration manifest is missing or invalid" in res1.stdout
+    assert "/superctx:status" in res1.stdout
+    assert "to inspect" in res1.stdout
+
+    # 2. Healthy setup -> state managed_healthy, action none
+    d2 = tmp_path / "case2"
+    core.ctx_dir(d2).mkdir(parents=True, exist_ok=True)
+    core.manifest_path(d2).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.hub_path(d2).write_text("# Shared Context", encoding="utf-8")
+    shim_content = shim.generate_shim("CLAUDE.md", "claude-at-import")
+    (d2 / "CLAUDE.md").write_text(shim_content, encoding="utf-8")
+    (core.sources_dir(d2) / "CLAUDE.md").parent.mkdir(parents=True, exist_ok=True)
+    (core.sources_dir(d2) / "CLAUDE.md").write_text("original content", encoding="utf-8")
+
+    res2 = subprocess.run(
+        ["bash", str(hook_path)],
+        cwd=d2,
+        env=env,
+        capture_output=True,
+        text=True
+    )
+    assert res2.returncode == 0
+    assert "SuperCtx is active" in res2.stdout
+    assert "canonical shared project context" in res2.stdout
+
+    # 3. Needs repair (broken shim) -> state managed_needs_repair, action repair
+    d3 = tmp_path / "case3"
+    core.ctx_dir(d3).mkdir(parents=True, exist_ok=True)
+    core.manifest_path(d3).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.hub_path(d3).write_text("# Shared Context", encoding="utf-8")
+    (d3 / "CLAUDE.md").write_text("broken content", encoding="utf-8")  # Not a shim
+    (core.sources_dir(d3) / "CLAUDE.md").parent.mkdir(parents=True, exist_ok=True)
+    (core.sources_dir(d3) / "CLAUDE.md").write_text("original content", encoding="utf-8")
+
+    res3 = subprocess.run(
+        ["bash", str(hook_path)],
+        cwd=d3,
+        env=env,
+        capture_output=True,
+        text=True
+    )
+    assert res3.returncode == 0
+    assert "installation has broken or missing shims" in res3.stdout
+    assert "/superctx:sync" in res3.stdout
+    assert "check and repair" in res3.stdout
