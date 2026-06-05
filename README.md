@@ -47,7 +47,7 @@ The `.ctx/` folder is the centralized hub for project context. SuperCtx makes `.
 
 ### Agent-Native Bootstrapping
 
-SuperCtx includes a built-in agent reference skill, `/superctx:using-superctx`. This is an agent reference / advanced skill. Normal users do not need to run this command; the agent uses it automatically to orient itself on the project's context boundaries and active files.
+SuperCtx includes a built-in agent reference skill, `/using-superctx`. This is an agent reference / advanced skill. Normal users do not need to run this command; the agent uses it automatically to orient itself on the project's context boundaries and active files.
 
 When SuperCtx is active, the agent uses `.ctx/SUPERCTX.md` as shared project context through generated shims. You normally ask the agent to update project context naturally instead of managing Markdown or TOML by hand.
 
@@ -150,19 +150,34 @@ SuperCtx commands are registered under the `superctx:` namespace to avoid collid
 
 After installing or reloading the plugin (`/reload-plugins`), you can verify command discovery:
 
-**Type `/superctx` in Claude Code** — the command palette will show the available commands and skills. While normal users only need to operate `/superctx:status`, you will see:
+**Type `/superctx` in Claude Code** — the command palette will show available SuperCtx operations. While normal users only need to operate `/superctx:status`, you will see:
 
 ```text
-/superctx:status           - Check shared context connection and link health
-/superctx:using-superctx   - Agent reference / advanced skill guide
-/superctx:init             - (Advanced) Scaffold/migrate the context hub
-/superctx:sync             - (Advanced) Repair generated shims
-/superctx:add              - (Advanced) Register a new local instruction file
+Normal SuperCtx command:
+/superctx:status           - Check shared context health
+
+Advanced SuperCtx operations:
+/superctx:init             - Scaffold/migrate the context hub
+/superctx:sync             - Repair generated shims
+/superctx:add              - Register a new local instruction file
+```
+
+**Type `/using`** — the agent reference skill will appear:
+
+```text
+/using-superctx            - Agent reference guide; normal users do not need to run this
 ```
 
 **Type `/status`** — only the Claude Code built-in status command should appear. SuperCtx does not register an unprefixed `/status` command.
 
 **Run `/superctx:status`** — SuperCtx confirms health or reports specific problems with actionable next steps.
+
+### Skill Naming Convention
+
+SuperCtx uses different naming rules for different kinds of skills:
+
+- **`superctx:` prefix** — SuperCtx product operations that mutate or inspect SuperCtx state (e.g. `/superctx:status`, `/superctx:init`, `/superctx:add`, `/superctx:sync`). The namespace prevents collisions with Claude Code built-ins.
+- **Plain process-style names** — Agent behavior and reference skills that teach the agent how to behave (e.g. `/using-superctx`). These follow the same pattern as other process/reference skills like `/using-superpowers`.
 
 ## CLI Usage
 
