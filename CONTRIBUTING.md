@@ -63,6 +63,18 @@ For skill-related changes, keep the skill aligned with SuperCtx's core purpose: 
 
 ## Release Checklist
 
+**Version bump rule**: Any change to skill names, command discovery, hooks, plugin metadata, or user-visible command behavior requires a plugin version bump.
+
+Examples that require a version bump:
+- renaming `/superctx:using-superctx` to `/using-superctx`
+- adding or removing a skill folder
+- changing skill frontmatter `name`
+- changing hook behavior
+- changing `hooks/hooks.json`
+- changing slash-command output behavior
+- changing plugin metadata
+- changing README command-discovery promises
+
 Before releasing a new version of SuperCtx:
 
 1. **Bump Version Surfaces**: Ensure the new version string matches exactly across:
