@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-05
+
 ### Changed
+- Renamed the SuperCtx agent reference skill from `/superctx:using-superctx` to `/using-superctx` to match Superpowers-style reference skill naming.
+- Reframed `/superctx:status` as the primary user-facing health command.
+- Moved setup, add, and repair operations toward agent-guided flows with explicit consent.
+- Improved candidate-repo, untracked-candidate, and repair guidance to avoid command-first UX.
 - Reframed `/superctx:sync` as a hub-and-shim repair command that checks registered shims, repairs missing or broken shims when safe, warns on missing inactive backups, and never rewrites `.ctx/SUPERCTX.md` from tool-specific files.
 - Removed legacy inward-sync behavior entirely; `superctx sync` has no `--legacy` compatibility mode and must not rebuild the hub from tool-specific files.
 - Renamed the plugin skill command from `/superctx:setup` to `/superctx:init` to align with Claude Code command vocabulary and avoid confusion with Claude Code built-in `/init`.
@@ -17,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added "Command Discovery and Namespace Safety" section to README with smoke test instructions.
 - Updated README marketplace installation target from `@claude-plugins-official` to `@claude-community` and added "Coming Soon: Claude Community Marketplace" section.
 - Verified fresh install smoke test and command-palette evidence for marketplace submission readiness (20 pytest tests pass; `claude plugin validate .` passes).
+
+### Fixed
+- Ensured user-visible command discovery changes ship with a plugin version bump so updated installs can receive the latest plugin surface.
 
 ### Removed
 - Moved the marketplace readiness report out of the tracked repository root because it is local development planning material.
