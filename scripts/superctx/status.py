@@ -151,6 +151,7 @@ def run(project_dir: Path) -> list[dict]:
         rel = entry["path"]
         live = project_dir / rel
         backup = core.sources_dir(project_dir) / rel
+        backup_required = entry.get("backup_required", True)
 
         conv = registry.lookup_known_convention(rel)
         import_syntax = conv.get("import_syntax", "plain-pointer") if conv else "plain-pointer"
@@ -179,6 +180,9 @@ def run(project_dir: Path) -> list[dict]:
             })
 
         # Check backup
+        if not backup_required:
+            continue
+
         backup_rel = f"{core.CTX_DIRNAME}/{core.SOURCES_DIRNAME}/{rel}"
         if not backup.is_file():
             results.append({

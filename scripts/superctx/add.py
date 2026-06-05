@@ -109,6 +109,8 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
         "path": rel_path_str,
         "tools": tools
     }
+    if not file_exists:
+        new_entry["backup_required"] = False
     if note:
         new_entry["note"] = note
     tracked_files.append(new_entry)
@@ -141,7 +143,12 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
 
         manifest_path.write_text(new_manifest_content, encoding="utf-8")
 
-        apply_res = shim.apply_shim(project_dir, rel_path_str, force_backup=False)
+        apply_res = shim.apply_shim(
+            project_dir,
+            rel_path_str,
+            force_backup=False,
+            backup_required=file_exists,
+        )
         if not apply_res.get("shimmed"):
             raise AddError(f"Failed to apply shim: {apply_res.get('reason')}")
 

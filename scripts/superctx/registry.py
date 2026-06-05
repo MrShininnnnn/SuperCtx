@@ -8,10 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib  # type: ignore[no-redef]
+from . import toml_compat
 
 
 @dataclass(frozen=True)
@@ -66,7 +63,7 @@ def registry_path() -> Path:
 
 def load_conventions(path: Path | None = None) -> list[dict]:
     with (Path(path) if path else registry_path()).open("rb") as fh:
-        return tomllib.load(fh).get("convention", [])
+        return toml_compat.load(fh).get("convention", [])
 
 
 def instruction_conventions(convs: list[dict] | None = None) -> list[dict]:

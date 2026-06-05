@@ -41,6 +41,73 @@ def test_registry_load_conventions_uses_toml():
     assert "GEMINI.md" in paths
 
 
+def test_source_runtime_works_without_tomllib_or_tomli(tmp_path):
+    """The plugin source path must work even when tomllib/tomli are unavailable."""
+    import os
+    import subprocess
+    import sys
+    import textwrap
+
+    project = tmp_path / "project"
+    ctx_dir = project / ".ctx"
+    ctx_dir.mkdir(parents=True)
+    (ctx_dir / "manifest.toml").write_text(
+        '[project]\nname = "fallback"\nhub = ".ctx/SUPERCTX.md"\n\n'
+        '[[files]]\npath = "GEMINI.md"\ntools = ["Gemini CLI"]\n',
+        encoding="utf-8",
+    )
+
+    sitecustomize_dir = tmp_path / "sitecustomize"
+    sitecustomize_dir.mkdir()
+    (sitecustomize_dir / "sitecustomize.py").write_text(
+        textwrap.dedent(
+            """
+            import builtins
+
+            _real_import = builtins.__import__
+
+            def _blocked_import(name, globals=None, locals=None, fromlist=(), level=0):
+                if name in {"tomllib", "tomli"}:
+                    raise ModuleNotFoundError(name)
+                return _real_import(name, globals, locals, fromlist, level)
+
+            builtins.__import__ = _blocked_import
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    script = textwrap.dedent(
+        f"""
+        from pathlib import Path
+        from superctx import core, registry
+
+        project = Path({str(project)!r})
+        manifest = core.load_manifest(project)
+        conventions = registry.load_conventions()
+
+        assert manifest["project"]["name"] == "fallback"
+        assert manifest["files"][0]["path"] == "GEMINI.md"
+        assert any(c["path"] == "GEMINI.md" for c in conventions)
+        print("fallback ok")
+        """
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join([str(sitecustomize_dir), str(Path.cwd() / "scripts")])
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "fallback ok" in result.stdout
+
+
 # ---------------------------------------------------------------------------
 # Blocker 3: Agent-native hub banner wording
 # ---------------------------------------------------------------------------
@@ -112,6 +179,7 @@ def test_add_missing_known_convention_with_create_shim(tmp_path):
     entry = next((f for f in manifest.get("files", []) if f["path"] == "GEMINI.md"), None)
     assert entry is not None
     assert "Gemini CLI" in entry["tools"]
+    assert entry["backup_required"] is False
 
     # No backup should be created (nothing to back up)
     assert not (core.sources_dir(tmp_path) / "GEMINI.md").is_file()
@@ -156,8 +224,13 @@ def test_add_missing_gemini_status_healthy(tmp_path):
     gemini_shim = next(
         (r for r in rows if r["kind"] == "shim" and r["path"] == "GEMINI.md"), None
     )
+    gemini_backup = next(
+        (r for r in rows if r["kind"] == "backup" and r.get("source") == "GEMINI.md"), None
+    )
     assert gemini_shim is not None
     assert gemini_shim["state"] == "healthy"
+    assert gemini_backup is None
+    assert not any(r["state"] != "healthy" for r in rows)
 
 
 def test_cli_add_create_shim_flag(tmp_path):

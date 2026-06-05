@@ -21,7 +21,7 @@ def is_shim_file(path: Path) -> bool:
     except Exception:
         return False
 
-def generate_shim(rel_path: str, import_syntax: str) -> str:
+def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = True) -> str:
     """Render the content of a shim for a given relative path and import syntax.
 
     Computes relative paths from the file's parent directory.
@@ -31,25 +31,32 @@ def generate_shim(rel_path: str, import_syntax: str) -> str:
     # Compute relative paths using forward slashes for cross-platform consistency
     rel_path_to_hub = os.path.relpath(".ctx/SUPERCTX.md", parent_dir).replace("\\", "/")
     rel_path_to_backup = os.path.relpath(f".ctx/sources/{rel_path}", parent_dir).replace("\\", "/")
+    backup_note = (
+        "Original pre-SuperCtx content backed up at:\n"
+        f"{rel_path_to_backup}"
+    )
+    if not backup_required:
+        backup_note = "Created by SuperCtx; no original content existed to back up."
 
     if import_syntax == "claude-at-import":
         return (
             f"# SuperCtx\n"
             f"{WARNING_MARKER}\n\n"
             f"@{rel_path_to_hub}\n\n"
-            f"<!-- Original pre-SuperCtx content backed up at:\n"
-            f"{rel_path_to_backup}\n"
-            f"-->\n"
+            f"<!-- {backup_note}\n-->\n"
         )
     else:
+        backup_line = f"Original pre-SuperCtx content is backed up at `{rel_path_to_backup}`."
+        if not backup_required:
+            backup_line = "Created by SuperCtx; no original content existed to back up."
         return (
             f"# SuperCtx\n"
             f"{WARNING_MARKER}\n\n"
             f"Use the shared project context in `{rel_path_to_hub}`.\n\n"
-            f"Original pre-SuperCtx content is backed up at `{rel_path_to_backup}`.\n"
+            f"{backup_line}\n"
         )
 
-def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False) -> dict:
+def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False, backup_required: bool = True) -> dict:
     """Apply the shim to a live file in project_dir.
 
     1. Check if the live file exists.
@@ -93,7 +100,7 @@ def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False) -> 
         backup_file.write_text(live_content, encoding="utf-8")
         backed_up = True
 
-    shim_content = generate_shim(rel_path, import_syntax)
+    shim_content = generate_shim(rel_path, import_syntax, backup_required=backup_required)
     live_file.parent.mkdir(parents=True, exist_ok=True)
     live_file.write_text(shim_content, encoding="utf-8")
 
