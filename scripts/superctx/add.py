@@ -19,7 +19,7 @@ class AddResult:
     message: str
 
 
-def run(project_dir: Path, input_path: str) -> AddResult:
+def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> AddResult:
     project_dir = Path(project_dir).resolve()
     manifest_path = core.manifest_path(project_dir)
     hub_path = core.hub_path(project_dir)
@@ -32,10 +32,11 @@ def run(project_dir: Path, input_path: str) -> AddResult:
     resolved_file_path = (project_dir / file_path).resolve()
 
     # 2. Validate path constraints
-    if not resolved_file_path.exists():
+    file_exists = resolved_file_path.exists()
+    if not file_exists and not create_if_missing:
         raise AddError(f"File does not exist: {input_path}")
 
-    if not resolved_file_path.is_file():
+    if file_exists and not resolved_file_path.is_file():
         raise AddError(f"Directories are not supported by add yet: {input_path}")
 
     try:
@@ -61,26 +62,38 @@ def run(project_dir: Path, input_path: str) -> AddResult:
                 message=f"{rel_path_str} is already tracked."
             )
 
-    # 4. Check backup collision
+    # 4. Check backup collision and read content
     backup_file = core.sources_dir(project_dir) / rel_path_str
-    live_content = resolved_file_path.read_text(encoding="utf-8")
-    is_live_shim = shim.is_shim(live_content)
 
-    if not is_live_shim and backup_file.is_file():
-        raise AddError(
-            f"A backup already exists at {backup_file.relative_to(project_dir)}. "
-            f"To resolve, remove the conflicting backup file in .ctx/sources/ and run /superctx:add <path> again."
-        )
-
-    # 5. Read original content
-    if is_live_shim:
-        # Read from backup if it exists, otherwise empty
-        if backup_file.is_file():
-            original_content = backup_file.read_text(encoding="utf-8")
-        else:
-            original_content = ""
+    if not file_exists:
+        # Creating a new shim for a non-existent known convention file
+        conv_check = registry.lookup_known_convention(rel_path_str)
+        if not conv_check:
+            raise AddError(
+                f"File does not exist and '{input_path}' is not a recognized standard convention path. "
+                f"Only known standard files (like GEMINI.md, .claude/CLAUDE.md) can be created as new shims."
+            )
+        original_content = ""
+        is_live_shim = False
     else:
-        original_content = live_content
+        live_content = resolved_file_path.read_text(encoding="utf-8")
+        is_live_shim = shim.is_shim(live_content)
+
+        if not is_live_shim and backup_file.is_file():
+            raise AddError(
+                f"A backup already exists at {backup_file.relative_to(project_dir)}. "
+                f"To resolve, remove the conflicting backup file in .ctx/sources/ and run /superctx:add <path> again."
+            )
+
+        # 5. Read original content
+        if is_live_shim:
+            # Read from backup if it exists, otherwise empty
+            if backup_file.is_file():
+                original_content = backup_file.read_text(encoding="utf-8")
+            else:
+                original_content = ""
+        else:
+            original_content = live_content
 
     # 6. Lookup known convention
     conv = registry.lookup_known_convention(rel_path_str)
@@ -96,6 +109,8 @@ def run(project_dir: Path, input_path: str) -> AddResult:
         "path": rel_path_str,
         "tools": tools
     }
+    if not file_exists:
+        new_entry["backup_required"] = False
     if note:
         new_entry["note"] = note
     tracked_files.append(new_entry)
@@ -128,7 +143,12 @@ def run(project_dir: Path, input_path: str) -> AddResult:
 
         manifest_path.write_text(new_manifest_content, encoding="utf-8")
 
-        apply_res = shim.apply_shim(project_dir, rel_path_str, force_backup=False)
+        apply_res = shim.apply_shim(
+            project_dir,
+            rel_path_str,
+            force_backup=False,
+            backup_required=file_exists,
+        )
         if not apply_res.get("shimmed"):
             raise AddError(f"Failed to apply shim: {apply_res.get('reason')}")
 
@@ -157,13 +177,22 @@ def run(project_dir: Path, input_path: str) -> AddResult:
             raise e
         raise AddError(str(e)) from e
 
-    return AddResult(
-        path=rel_path_str,
-        status="added",
-        tools=tools,
-        message=(
+    if not file_exists:
+        msg = (
+            f"Created {rel_path_str} as a generated shim pointing to "
+            f".ctx/{core.HUB_NAME}. "
+            f"Agents read the hub through their shims automatically."
+        )
+    else:
+        msg = (
             f"Added {rel_path_str}. Original content backed up, incorporated into "
             f".ctx/{core.HUB_NAME}, and replaced with a generated shim. "
             f"Agents read the hub through their shims automatically."
         )
+
+    return AddResult(
+        path=rel_path_str,
+        status="added",
+        tools=tools,
+        message=msg
     )

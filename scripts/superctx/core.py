@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-import tomllib
 from pathlib import Path
+
+from . import toml_compat
 
 CTX_DIRNAME = ".ctx"
 HUB_NAME = "SUPERCTX.md"
@@ -62,7 +63,7 @@ class SchemaError(ValueError):
 
 def load_manifest(project_dir: Path) -> dict:
     with manifest_path(project_dir).open("rb") as fh:
-        data = tomllib.load(fh)
+        data = toml_compat.load(fh)
 
     if not isinstance(data, dict):
         raise SchemaError("Manifest root must be a table")
@@ -88,6 +89,8 @@ def load_manifest(project_dir: Path) -> dict:
 
             if "tools" in entry and not isinstance(entry["tools"], list):
                 raise SchemaError("Manifest 'files' entry 'tools' must be an array")
+            if "backup_required" in entry and not isinstance(entry["backup_required"], bool):
+                raise SchemaError("Manifest 'files' entry 'backup_required' must be a boolean")
 
     return data
 
@@ -98,6 +101,10 @@ def _toml_str(value: str) -> str:
 
 def _toml_array(items) -> str:
     return "[" + ", ".join(_toml_str(item) for item in items) + "]"
+
+
+def _toml_bool(value: bool) -> str:
+    return "true" if value else "false"
 
 
 def dump_manifest(data: dict) -> str:
@@ -117,6 +124,8 @@ def dump_manifest(data: dict) -> str:
         lines.append("[[files]]")
         lines.append(f'path = {_toml_str(entry["path"])}')
         lines.append(f'tools = {_toml_array(entry.get("tools", []))}')
+        if "backup_required" in entry:
+            lines.append(f'backup_required = {_toml_bool(entry["backup_required"])}')
         if "note" in entry:
             lines.append(f'note = {_toml_str(entry["note"])}')
         lines.append("")

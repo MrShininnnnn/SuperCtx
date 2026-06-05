@@ -241,9 +241,9 @@ def _cmd_status(project_dir: Path, detect: bool = False) -> int:
     return 0
 
 
-def _cmd_add(project_dir: Path, file_path: str) -> int:
+def _cmd_add(project_dir: Path, file_path: str, create_if_missing: bool = False) -> int:
     try:
-        result = add_cmd.run(project_dir, file_path)
+        result = add_cmd.run(project_dir, file_path, create_if_missing=create_if_missing)
         print(result.message)
         return 0
     except add_cmd.AddError as e:
@@ -264,12 +264,17 @@ def main(argv: list[str] | None = None) -> int:
     p_add = sub.add_parser("add")
     p_add.add_argument("path")
     p_add.add_argument("project_dir", nargs="?", default=".")
+    p_add.add_argument(
+        "--create-shim",
+        action="store_true",
+        help="Create a generated shim even if the file does not exist yet (known conventions only)"
+    )
 
     args = parser.parse_args(argv)
 
     project_dir = Path(args.project_dir).resolve()
     if args.cmd == "add":
-        return _cmd_add(project_dir, args.path)
+        return _cmd_add(project_dir, args.path, create_if_missing=getattr(args, "create_shim", False))
 
     if args.cmd == "status":
         return _cmd_status(project_dir, detect=args.detect)
