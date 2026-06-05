@@ -73,3 +73,34 @@ def test_user_prompt_expansion_init():
     assert code == 2
     assert "Proceed with SuperCtx setup instead?" in msg
 
+
+def test_executable_pre_tool_use(tmp_path):
+    import os
+    import subprocess
+    import json
+    from pathlib import Path
+    
+    hook_script = Path(__file__).parent.parent / "hooks" / "pre-tool-use"
+    
+    payload = {
+        "cwd": str(tmp_path),
+        "tool_name": "Write",
+        "tool_input": {
+            "file_path": str(tmp_path / "CLAUDE.md")
+        }
+    }
+    
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(Path(__file__).parent.parent)
+    
+    proc = subprocess.run(
+        [str(hook_script)],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        env=env
+    )
+    assert proc.returncode == 2
+    assert "Proceed with SuperCtx setup instead?" in proc.stderr
+
+
