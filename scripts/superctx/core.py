@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # type: ignore[no-redef]
 
 CTX_DIRNAME = ".ctx"
 HUB_NAME = "SUPERCTX.md"

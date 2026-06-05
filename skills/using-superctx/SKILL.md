@@ -34,14 +34,12 @@ SuperCtx provides a central project-local context layer using a hub-and-shim mod
 5. **Do NOT import `.ctx/sources/` backups as active context.** Agents must not read or load files from `.ctx/sources/` as active context. SuperCtx internals may read them for recovery and status checks.
 6. **Do NOT edit generated shims as the source of truth.** Tool-specific files are thin generated pointers to `.ctx/SUPERCTX.md`.
 7. **Use `/superctx:sync` for repair only.** It regenerates missing or broken shims from the hub; it does not update the hub from tool files.
-8. **Offer agent-guided setup with explicit user consent when relevant.** If a candidate repository is detected (state `candidate_repo`), do not run `/superctx:init` or mutate files without the user's explicit natural-language consent. Present the detected files, explain what setup will do, and ask for confirmation. Example offer:
-   > I found existing agent instruction files in this repo:
-   > - `.claude/CLAUDE.md`
-   > - `.codex/AGENTS.md`
+8. **Offer agent-guided setup with explicit user consent when relevant.** If a candidate repository is detected (state `candidate_repo`), do not run `/superctx:init` or mutate files without the user's explicit natural-language consent. Do not create `.ctx/` or any other files before receiving consent. Present the detected files, explain what setup will do, and ask for confirmation. Use this exact consent prompt:
+   > Using SuperCtx, I can set up one shared context hub for this repo.
    >
-   > I can set up one shared context hub so all agents stay aligned. This will:
-   > - create `.ctx/SUPERCTX.md` as the canonical project context
-   > - back up the originals under `.ctx/sources/`
+   > This will:
+   > - create `.ctx/SUPERCTX.md`
+   > - back up the original instruction files under `.ctx/sources/`
    > - replace the live instruction files with generated shims pointing to the hub
    >
    > Proceed?

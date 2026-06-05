@@ -250,7 +250,7 @@ SuperCtx is not:
 
 ## Contributor / Development Setup
 
-SuperCtx requires Python 3.11 or newer.
+SuperCtx requires Python 3.9 or newer (3.11+ recommended).
 
 From a fresh clone:
 

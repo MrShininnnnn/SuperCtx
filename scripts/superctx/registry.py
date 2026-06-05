@@ -5,9 +5,13 @@ Identity is by PATH convention (never inferred from file contents). See conventi
 
 from __future__ import annotations
 
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # type: ignore[no-redef]
 
 
 @dataclass(frozen=True)

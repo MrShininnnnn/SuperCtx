@@ -18,7 +18,7 @@ Small fixes, documentation corrections, tests, and narrowly scoped bug fixes can
 
 ## Local Setup
 
-SuperCtx requires Python 3.11 or newer.
+SuperCtx requires Python 3.9 or newer (3.11+ recommended).
 
 ```bash
 python -m venv .venv

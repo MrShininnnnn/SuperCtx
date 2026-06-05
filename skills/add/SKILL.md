@@ -12,13 +12,35 @@ Add a local candidate file to the SuperCtx manifest to begin tracking it.
 Announce that you are using SuperCtx (replace `<path>` with the actual file path argument):
 > Using SuperCtx to connect <path> as a local context file.
 
-## Run
+## Check File Existence First
+
+Before running the add command, check whether the file exists in the project.
+
+**If the file exists:** Run the add command normally:
 
 ```bash
 PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx add "$ARGUMENTS"
 ```
 
-The command takes the path to the instruction file to track.
+**If the file does not exist and is a known standard convention** (e.g. `GEMINI.md`, `.claude/CLAUDE.md`, `.codex/AGENTS.md`, `.github/copilot-instructions.md`):
+
+Explain that the file does not exist yet, and offer to create it as a generated shim:
+
+> I do not see an existing `<path>`. I can create it as a generated shim pointing to `.ctx/SUPERCTX.md`. Proceed?
+
+After the user confirms, run with `--create-shim`:
+
+```bash
+PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx add --create-shim "$ARGUMENTS"
+```
+
+Do not create any file before receiving the user's explicit consent.
+
+**If the file does not exist and is not a known standard convention:**
+
+Explain clearly that the file must exist before it can be tracked:
+
+> `<path>` does not exist yet. SuperCtx can add existing instruction files. To track a new file, create it first, then run `/superctx:add <path>`.
 
 ## Then report to the user
 

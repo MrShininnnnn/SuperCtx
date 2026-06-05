@@ -4,7 +4,7 @@ from pathlib import Path
 from . import core, registry, shim
 
 _BANNER = (
-    "<!-- Canonical project context hub. Edit this file to update instructions. -->\n"
+    "<!-- Canonical project context hub managed by SuperCtx. -->\n"
 )
 
 def run(project_dir: Path) -> dict:

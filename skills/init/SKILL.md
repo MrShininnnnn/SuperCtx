@@ -11,12 +11,26 @@ and replaces those files with generated shims pointing to the hub.
 
 ## Before Running
 
-Announce that you are using SuperCtx:
+Never run this command without first obtaining the user's explicit natural-language consent.
+
+Use this consent prompt before setup:
+> Using SuperCtx, I can set up one shared context hub for this repo.
+>
+> This will:
+> - create `.ctx/SUPERCTX.md`
+> - back up the original instruction files under `.ctx/sources/`
+> - replace the live instruction files with generated shims pointing to the hub
+>
+> Proceed?
+
+Do not create `.ctx/` or any other files before receiving the user's confirmation.
+
+After consent, announce:
 > Using SuperCtx to set up the shared project context for this repo.
 
 ## Run
 
-Never run this command without first obtaining the user's explicit natural-language consent. If the repository is in a needs-repair state, run `/superctx:status` and `/superctx:sync` instead of `/superctx:init`. If the repository is in a legacy state, running `/superctx:init` directly may fail because existing SuperCtx state is already present. Treat this as migration/recovery work: preserve existing instruction contents and use explicit user-approved migration steps; do not delete `.ctx` or overwrite files ad hoc.
+If the repository is in a needs-repair state, run `/superctx:status` and `/superctx:sync` instead of `/superctx:init`. If the repository is in a legacy state, running `/superctx:init` directly may fail because existing SuperCtx state is already present. Treat this as migration/recovery work: preserve existing instruction contents and use explicit user-approved migration steps; do not delete `.ctx` or overwrite files ad hoc.
 
 ```bash
 PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx init

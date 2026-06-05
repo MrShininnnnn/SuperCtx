@@ -1,4 +1,4 @@
-<!-- Canonical project context hub. Edit this file to update instructions. -->
+<!-- Canonical project context hub managed by SuperCtx. -->
 
 # SUPERCTX — demo-python-project
 
