@@ -290,6 +290,13 @@ SuperCtx is still early, so please open an issue before making large design chan
 
 For contribution details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Project Policies
+
+- [Privacy Policy](PRIVACY.md)
+- [Security Policy](SECURITY.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Contributing](CONTRIBUTING.md)
+
 ## Author
 
 SuperCtx is created and maintained by **Ning Shi (Shining)**.
