@@ -18,7 +18,7 @@ def test_classify_write_path():
     assert classify_write_path("src/main.py", tracked) == "normal_file"
 
 
-def test_pre_tool_use_candidate_repo(tmp_path, monkeypatch):
+def test_pre_tool_use_candidate_repo(tmp_path):
     import json
     from superctx.guard import handle_pre_tool_use
     # Create candidate files but no .ctx
