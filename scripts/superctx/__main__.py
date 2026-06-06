@@ -75,8 +75,7 @@ def _cmd_init(project_dir: Path) -> int:
 
     file_cands = [c for c in untracked if (project_dir / c).is_file()]
     if file_cands:
-        print("I can help you connect these candidate files to the shared context hub.")
-        print("Please ask the user for explicit consent before tracking them.")
+        print("Recommended action: Offer to connect these candidate files (with explicit consent).")
         print()
 
     return 0

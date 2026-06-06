@@ -633,6 +633,22 @@ def test_init_with_candidates_only(tmp_path):
     assert manifest.get("files", []) == []
 
 
+def test_cli_init_candidate_output_is_agent_guided(tmp_path, capsys):
+    from superctx.__main__ import main
+
+    make_repo(tmp_path, {
+        ".agy/ANTIGRAVITY.md": "agy file\n",
+    })
+
+    exit_code = main(["init", str(tmp_path)])
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert ".agy/ANTIGRAVITY.md" in output
+    assert "Recommended action: Offer to connect these candidate files (with explicit consent)." in output
+    assert "/superctx:add" not in output
+
+
 def test_lookup_known_convention():
     # Test known convention matching
     conv = registry.lookup_known_convention(".github/copilot-instructions.md")
@@ -651,6 +667,8 @@ def test_add_validates_manifest_exists(tmp_path):
     with pytest.raises(add_cmd.AddError) as exc_info:
         add_cmd.run(tmp_path, "somefile.md")
     assert "SuperCtx is not initialized in this project" in str(exc_info.value)
+    assert "explicit consent" in str(exc_info.value)
+    assert "superctx init" not in str(exc_info.value)
 
 
 def test_add_validations_missing_and_directories(tmp_path):
