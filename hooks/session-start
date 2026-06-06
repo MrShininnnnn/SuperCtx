@@ -25,21 +25,21 @@ print(state, action, ",".join(candidates))
 
   if [[ "$state" == "managed_healthy" ]]; then
     cat <<'EOF'
-SuperCtx is active. `.ctx/SUPERCTX.md` is the canonical shared project context. Registered tool instruction files are generated shims pointing to it. Use `/superctx:status` to check health.
+SuperCtx is active. `.ctx/SUPERCTX.md` is the canonical shared project context. Registered tool instruction files are generated shims pointing to it.
 EOF
   elif [[ "$state" == "managed_needs_repair" ]]; then
     if [[ "$action" == "repair" ]]; then
       cat <<'EOF'
-SuperCtx is active, but the installation has broken or missing shims. Run `/superctx:status` to check and repair.
+SuperCtx is active, but the installation has broken or missing shims. Inspect the setup and offer to repair the shims. Once the user gives consent, run the repair.
 EOF
     else
       cat <<'EOF'
-SuperCtx is present, but the configuration manifest is missing or invalid. Run `/superctx:status` to inspect.
+SuperCtx is present, but the configuration manifest is missing or invalid. Explain the problem and offer to inspect the setup.
 EOF
     fi
   elif [[ "$state" == "managed_legacy" ]]; then
     cat <<'EOF'
-SuperCtx is present, but some instruction files are legacy and not yet fully migrated. Treat this as a migration state: inspect with `/superctx:status`, preserve existing instruction contents, and do not run setup or remove `.ctx` without explicit user-approved migration steps.
+SuperCtx is present, but some instruction files are legacy and not yet fully migrated. Explain this situation to the user, preserve existing instruction contents, and offer to migrate the legacy setup after obtaining explicit consent.
 EOF
   elif [[ "$state" == "candidate_repo" ]]; then
     # Format candidate file list for the agent

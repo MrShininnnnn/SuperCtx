@@ -5,7 +5,7 @@ description: Use when the user wants a SuperCtx status check, asks about hub-and
 
 # SuperCtx Status
 
-Report structural integrity and health of the hub-and-shim v0.2 model. Read-only — never writes.
+Report structural integrity and health of the current SuperCtx hub-and-shim model. Read-only — never writes.
 
 ## Before Running
 

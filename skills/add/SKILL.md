@@ -40,7 +40,7 @@ Do not create any file before receiving the user's explicit consent.
 
 Explain clearly that the file must exist before it can be tracked:
 
-> `<path>` does not exist yet. SuperCtx can add existing instruction files. To track a new file, create it first, then run `/superctx:add <path>`.
+> `<path>` does not exist yet. SuperCtx tracks existing instruction files. Please create the file first or let me know if you would like me to create and connect it for you.
 
 ## Then report to the user
 

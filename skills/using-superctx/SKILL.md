@@ -94,11 +94,11 @@ Use these phrases to report successful execution when the command output is heal
 
 ### Workflow 4: Repairing generated shims
 - **User:** "The Codex instruction file is missing."
-- **Agent Action:** Run `/superctx:status`. If the registered shim is missing or broken, run `/superctx:sync` to repair it.
+- **Agent Action:** Run `/superctx:status`. If the registered shim is missing or broken, explain the issue and offer to repair the shims. Once the user gives consent, run `/superctx:sync` internally.
 
 ### Workflow 5: Tracking a new instruction file
 - **User:** "I added a new tool instruction file at .agy/ANTIGRAVITY.md."
-- **Agent Action:** Run `/superctx:add .agy/ANTIGRAVITY.md`.
+- **Agent Action:** Explain that you can connect the new instruction file to the shared context hub, and offer to do so. Once the user gives consent, run `/superctx:add .agy/ANTIGRAVITY.md` internally.
 
 ### Workflow 6: Agent-guided setup in a candidate repo
 - **Context:** Session starts; hook reports `candidate_repo` with detected files `.claude/CLAUDE.md` and `.codex/AGENTS.md`.

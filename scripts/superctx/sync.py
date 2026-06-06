@@ -20,7 +20,10 @@ def run(project_dir: Path) -> dict:
     project_dir = Path(project_dir)
     manifest_path = core.manifest_path(project_dir)
     if not manifest_path.is_file():
-        raise SyncError("SuperCtx is not initialized in this project. Run 'superctx init' first.")
+        raise SyncError(
+            "SuperCtx is not initialized in this project. "
+            "Please offer to set up SuperCtx (with explicit consent) first."
+        )
 
     try:
         manifest = core.load_manifest(project_dir)

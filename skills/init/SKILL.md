@@ -44,6 +44,6 @@ exists it makes no changes.
 Present the output from the command. On the healthy path, keep the report concise:
 
 - Which files were connected (from the command output).
-- `.ctx/SUPERCTX.md` is now the canonical project context. Use `/superctx:add <path>` to connect additional instruction files.
+- `.ctx/SUPERCTX.md` is now the canonical project context. If additional instruction files are needed, offer to connect them (which runs `/superctx:add <path>` internally).
 
 Only surface backup or shim details if the command reports warnings or failures.

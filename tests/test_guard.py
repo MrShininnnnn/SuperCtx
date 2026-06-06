@@ -18,7 +18,7 @@ def test_classify_write_path():
     assert classify_write_path("src/main.py", tracked) == "normal_file"
 
 
-def test_pre_tool_use_candidate_repo(tmp_path, monkeypatch):
+def test_pre_tool_use_candidate_repo(tmp_path):
     import json
     from superctx.guard import handle_pre_tool_use
     # Create candidate files but no .ctx
@@ -65,12 +65,79 @@ def test_pre_tool_use_managed_healthy(tmp_path):
     assert "is a generated SuperCtx shim" in msg
 
 
+def test_pre_tool_use_managed_needs_repair_explains_consent_flow(tmp_path):
+    from superctx.guard import handle_pre_tool_use
+
+    ctx = tmp_path / ".ctx"
+    ctx.mkdir()
+    (ctx / "manifest.toml").write_text(
+        '[[files]]\npath="CLAUDE.md"\ntools=["Claude"]\n',
+        encoding="utf-8",
+    )
+    (ctx / "SUPERCTX.md").write_text("hub content", encoding="utf-8")
+    (ctx / "sources").mkdir()
+    (ctx / "sources" / "CLAUDE.md").write_text("original content", encoding="utf-8")
+
+    code, msg = handle_pre_tool_use({
+        "cwd": str(tmp_path),
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(tmp_path / "CLAUDE.md")},
+    })
+
+    assert code == 2
+    assert "generated shims are broken or missing" in msg
+    assert "Proceed with repair?" in msg
+
+
+def test_pre_tool_use_managed_legacy_explains_consent_flow(tmp_path):
+    from superctx.guard import handle_pre_tool_use
+
+    ctx = tmp_path / ".ctx"
+    ctx.mkdir()
+    (ctx / "manifest.toml").write_text(
+        '[[files]]\npath="CLAUDE.md"\ntools=["Claude"]\n',
+        encoding="utf-8",
+    )
+    (ctx / "SUPERCTX.md").write_text("hub content", encoding="utf-8")
+    (tmp_path / "CLAUDE.md").write_text("legacy instructions", encoding="utf-8")
+
+    code, msg = handle_pre_tool_use({
+        "cwd": str(tmp_path),
+        "tool_name": "Edit",
+        "tool_input": {"file_path": str(tmp_path / "CLAUDE.md")},
+    })
+
+    assert code == 2
+    assert "older legacy setup" in msg
+    assert "preserving your existing instruction contents" in msg
+    assert "Proceed with migration?" in msg
+
+
+def test_pre_tool_use_not_candidate_explains_setup_mutations(tmp_path):
+    from superctx.guard import handle_pre_tool_use
+
+    code, msg = handle_pre_tool_use({
+        "cwd": str(tmp_path),
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(tmp_path / "CLAUDE.md")},
+    })
+
+    assert code == 2
+    assert "create `.ctx/SUPERCTX.md`" in msg
+    assert "back up the original instruction files under `.ctx/sources/`" in msg
+    assert "replace the live instruction files with generated shims" in msg
+    assert "Proceed with SuperCtx setup instead?" in msg
+
+
 
 def test_user_prompt_expansion_init():
     from superctx.guard import handle_user_prompt_expansion
     payload = {"user_prompt": "/init"}
     code, msg = handle_user_prompt_expansion(payload)
     assert code == 2
+    assert "create `.ctx/SUPERCTX.md`" in msg
+    assert "back up the original instruction files under `.ctx/sources/`" in msg
+    assert "replace the live instruction files with generated shims" in msg
     assert "Proceed with SuperCtx setup instead?" in msg
 
 

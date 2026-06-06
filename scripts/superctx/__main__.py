@@ -63,7 +63,7 @@ def _cmd_init(project_dir: Path) -> int:
         print("WARNING: Some shims could not be applied due to pre-existing backups:")
         for shim in failed_shims:
             print(f"  ! {shim}")
-        print("To resolve, remove the conflicting backup files in .ctx/sources/ and run /superctx:init again.")
+        print("To resolve, inspect the conflict between the backup files in .ctx/sources/ and your local versions.")
         print()
 
     untracked = result.get("untracked", [])
@@ -75,9 +75,7 @@ def _cmd_init(project_dir: Path) -> int:
 
     file_cands = [c for c in untracked if (project_dir / c).is_file()]
     if file_cands:
-        print("To track candidate files, run:")
-        for cand_path in file_cands:
-            print(f"  /superctx:add {cand_path}")
+        print("Recommended action: Offer to connect these candidate files (with explicit consent).")
         print()
 
     return 0
