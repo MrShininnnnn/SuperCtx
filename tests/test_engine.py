@@ -777,7 +777,7 @@ def test_add_backup_collision(tmp_path):
         add_cmd.run(tmp_path, "somefile.md")
     assert "backup already exists" in str(exc_info.value).lower()
     assert "manually remove or rename the pre-existing backup file" not in str(exc_info.value)
-    assert "/superctx:add" in str(exc_info.value)
+    assert "inspect the conflict" in str(exc_info.value)
 
 
 def test_add_already_shimmed_with_backup(tmp_path):
@@ -1460,8 +1460,8 @@ def test_hook_session_start_states(tmp_path):
     )
     assert res1.returncode == 0
     assert "configuration manifest is missing or invalid" in res1.stdout
-    assert "/superctx:status" in res1.stdout
-    assert "to inspect" in res1.stdout
+    assert "/superctx:status" not in res1.stdout
+    assert "offer to inspect" in res1.stdout
 
     # 2. Healthy setup -> state managed_healthy, action none
     d2 = tmp_path / "case2"
@@ -1502,8 +1502,8 @@ def test_hook_session_start_states(tmp_path):
     )
     assert res3.returncode == 0
     assert "installation has broken or missing shims" in res3.stdout
-    assert "/superctx:status" in res3.stdout
-    assert "check and repair" in res3.stdout
+    assert "/superctx:status" not in res3.stdout
+    assert "offer to repair the shims" in res3.stdout
 
     # 4. Candidate repo -> state candidate_repo, consent-based offer with file list
     d4 = tmp_path / "case4"

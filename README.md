@@ -43,7 +43,9 @@ The `.ctx/` folder is the centralized hub for project context. SuperCtx makes `.
                └─> GEMINI.md (shim)
 ```
 
-`SUPERCTX.md` is a version-controlled Markdown file and the canonical shared context hub. You can edit it directly, but the normal workflow is to ask the agent to update project context. Original tool instruction files are backed up and converted to thin referential shims.
+`SUPERCTX.md` is a version-controlled Markdown file and the canonical shared context hub. You can inspect or edit it directly if needed, but the normal workflow is to ask the agent to update project context. Original tool instruction files are backed up and converted to thin referential shims.
+
+A built-in write guard also intercepts direct edits/writes to protected instruction files, guiding the agent to update the shared context hub instead.
 
 ### Agent-Native Bootstrapping
 
@@ -59,7 +61,7 @@ The cue should stay task-specific and brief. SuperCtx should not explain hub, sh
 
 ## What SuperCtx Auto-Detects
 
-SuperCtx scans the project directory during initialization and status reporting:
+SuperCtx scans the project directory during setup, status checks, session start, and protected instruction-file writes:
 
 1. **Verified Instruction Files** (Auto-connected):
    Root-level `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and hidden standard paths like `.claude/CLAUDE.md`, `.codex/AGENTS.md`, and `.github/copilot-instructions.md`. These are automatically added to `.ctx/manifest.toml`.

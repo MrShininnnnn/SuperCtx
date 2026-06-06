@@ -26,7 +26,10 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
 
     # 1. Validate manifest exists
     if not manifest_path.exists():
-        raise AddError("SuperCtx is not initialized in this project. Run 'superctx init' first.")
+        raise AddError(
+            "SuperCtx is not initialized in this project. "
+            "Please offer to set up SuperCtx (with explicit consent) first."
+        )
 
     file_path = Path(input_path)
     resolved_file_path = (project_dir / file_path).resolve()
@@ -82,7 +85,7 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
         if not is_live_shim and backup_file.is_file():
             raise AddError(
                 f"A backup already exists at {backup_file.relative_to(project_dir)}. "
-                f"To resolve, remove the conflicting backup file in .ctx/sources/ and run /superctx:add <path> again."
+                f"Please inspect the conflict between the backup file and your local version before connecting it."
             )
 
         # 5. Read original content

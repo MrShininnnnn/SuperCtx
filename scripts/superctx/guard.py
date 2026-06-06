@@ -137,12 +137,20 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
 
         elif repo_state == "managed_needs_repair":
             if classification in ("known_generated_shim", "known_instruction_file"):
-                msg = "SuperCtx is present, but it needs repair before updating this instruction file. Repair first?"
+                msg = (
+                    "Using SuperCtx, I detected that the generated shims are broken or missing and need repair.\n\n"
+                    "I can repair the shims to restore alignment with the shared context hub.\n\n"
+                    "Proceed with repair?"
+                )
                 return 2, msg
 
         elif repo_state == "managed_legacy":
             if classification in ("known_generated_shim", "known_instruction_file"):
-                msg = "SuperCtx is present, but some instruction files are legacy and not yet fully migrated. Migrate first?"
+                msg = (
+                    "Using SuperCtx, I detected an older legacy setup that needs to be migrated to the current hub-and-shim model.\n\n"
+                    "I can migrate the setup while preserving your existing instruction contents.\n\n"
+                    "Proceed with migration?"
+                )
                 return 2, msg
 
         elif repo_state == "not_candidate":
@@ -150,6 +158,10 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
                 msg = (
                     f"Using SuperCtx, I noticed you are creating an agent instruction file: `{rel_str}`.\n\n"
                     f"I can set up one shared context hub to keep Claude, Codex, Gemini, and other agent instructions aligned.\n\n"
+                    f"This will:\n"
+                    f"- create `.ctx/SUPERCTX.md`\n"
+                    f"- back up the original instruction files under `.ctx/sources/`\n"
+                    f"- replace the live instruction files with generated shims pointing to the hub\n\n"
                     f"Proceed with SuperCtx setup instead?"
                 )
                 return 2, msg
@@ -167,6 +179,10 @@ def handle_user_prompt_expansion(data: dict) -> tuple[int, str]:
         msg = (
             "Using SuperCtx, I noticed `/init` is about to create or update Claude instructions.\n\n"
             "This repo can use SuperCtx to keep Claude, Codex, Gemini, and other agent instructions aligned through one shared context hub.\n\n"
+            "This will:\n"
+            "- create `.ctx/SUPERCTX.md`\n"
+            "- back up the original instruction files under `.ctx/sources/`\n"
+            "- replace the live instruction files with generated shims pointing to the hub\n\n"
             "Proceed with SuperCtx setup instead?"
         )
         return 2, msg

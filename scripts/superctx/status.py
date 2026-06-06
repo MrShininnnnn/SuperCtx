@@ -126,7 +126,10 @@ def run(project_dir: Path) -> list[dict]:
     manifest_path = core.manifest_path(project_dir)
 
     if not manifest_path.is_file():
-        raise StatusError("SuperCtx is not initialized in this project. Run 'superctx init' first.")
+        raise StatusError(
+            "SuperCtx is not initialized in this project. "
+            "Please offer to set up SuperCtx (with explicit consent) first."
+        )
 
     results: list[dict] = []
 

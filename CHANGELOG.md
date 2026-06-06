@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `UserPromptExpansion` hook to intercept `/init` prompt.
 - Added unit/integration test coverage for path classification and interception rules.
 - Added version consistency test.
+- Support for creating missing standard-file shims (e.g. `GEMINI.md`) using `superctx add --create-shim`.
+- Python 3.9/3.10 TOML compatibility (using fallback `tomli`).
+- Write-guard redirection so realistic `CLAUDE.md` updates are centralized in `.ctx/SUPERCTX.md` instead of directly editing generated shims.
+
+### Changed
+- Improved generated hub banner wording to "managed by SuperCtx."
+- Refined all user-visible warning/error dialogs to use agent-guided consent language instead of command-first instructions.
 
 ## [0.1.2] - 2026-06-05
 
