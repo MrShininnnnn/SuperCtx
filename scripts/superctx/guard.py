@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import sys
 import json
@@ -9,14 +11,14 @@ from . import core
 def classify_write_path(path_str: str, tracked_paths: set[str]) -> str:
     path_str = path_str.strip().replace("\\", "/").lstrip("/")
     parts = Path(path_str).parts
-    
+
     ignored_folders = {".git", ".venv", ".cache", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".node_modules"}
     if any(part in ignored_folders for part in parts):
         return "ignored_hidden_path"
-        
+
     if path_str in tracked_paths:
         return "known_generated_shim"
-        
+
     known_instruction_files = {
         "CLAUDE.md",
         ".claude/CLAUDE.md",
@@ -29,11 +31,11 @@ def classify_write_path(path_str: str, tracked_paths: set[str]) -> str:
     }
     if path_str in known_instruction_files:
         return "known_instruction_file"
-        
+
     known_agent_folders = (".claude/", ".codex/", ".cursor/", ".agy/", ".antigravity/", ".agents/", ".agent/")
     if path_str.startswith(known_agent_folders):
         return "known_agent_folder_file"
-        
+
     is_hidden = False
     for part in parts:
         if part.startswith(".") and part not in (".", ".."):
@@ -41,7 +43,7 @@ def classify_write_path(path_str: str, tracked_paths: set[str]) -> str:
             break
     if is_hidden:
         return "unknown_hidden_path"
-        
+
     return "normal_file"
 
 def parse_input(stdin_str: str) -> dict:
@@ -70,12 +72,12 @@ def extract_paths(tool_input: dict | list) -> list[str]:
 def handle_pre_tool_use(data: dict) -> tuple[int, str]:
     cwd_str = data.get("cwd") or os.getcwd()
     project_dir = Path(cwd_str).resolve()
-    
+
     tool_input = data.get("tool_input", {})
     target_paths = extract_paths(tool_input)
     if not target_paths:
         return 0, ""
-        
+
     tracked_paths = set()
     try:
         manifest = core.load_manifest(project_dir)
@@ -83,12 +85,12 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
             tracked_paths.add(entry["path"].replace("\\", "/"))
     except Exception:
         pass
-        
+
     try:
         state = detect_repo_state(project_dir)
     except Exception:
         state = {"state": "not_candidate", "candidates": []}
-        
+
     for p in target_paths:
         p_path = Path(p).resolve()
         try:
@@ -96,13 +98,13 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
             rel_str = rel_path.as_posix()
         except ValueError:
             continue
-            
+
         classification = classify_write_path(rel_str, tracked_paths)
         if classification in ("ignored_hidden_path", "unknown_hidden_path", "normal_file", "known_agent_folder_file"):
             continue
-            
+
         repo_state = state.get("state", "not_candidate")
-        
+
         if repo_state == "candidate_repo":
             if classification == "known_instruction_file":
                 cands_str = "\n".join(f"- {c}" for c in state.get("candidates", []))
@@ -117,7 +119,7 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
                     f"Proceed?"
                 )
                 return 2, msg
-                
+
         elif repo_state == "managed_healthy":
             if classification == "known_generated_shim":
                 msg = (
@@ -132,17 +134,17 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
                     f"Proceed?"
                 )
                 return 2, msg
-                
+
         elif repo_state == "managed_needs_repair":
             if classification in ("known_generated_shim", "known_instruction_file"):
                 msg = "SuperCtx is present, but it needs repair before updating this instruction file. Repair first?"
                 return 2, msg
-                
+
         elif repo_state == "managed_legacy":
             if classification in ("known_generated_shim", "known_instruction_file"):
                 msg = "SuperCtx is present, but some instruction files are legacy and not yet fully migrated. Migrate first?"
                 return 2, msg
-                
+
         elif repo_state == "not_candidate":
             if classification == "known_instruction_file":
                 msg = (
@@ -151,7 +153,7 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
                     f"Proceed with SuperCtx setup instead?"
                 )
                 return 2, msg
-                
+
     return 0, ""
 
 def handle_user_prompt_expansion(data: dict) -> tuple[int, str]:
@@ -160,7 +162,7 @@ def handle_user_prompt_expansion(data: dict) -> tuple[int, str]:
         if key in data and isinstance(data[key], str):
             prompt_text = data[key].strip()
             break
-            
+
     if prompt_text.startswith("/init"):
         msg = (
             "Using SuperCtx, I noticed `/init` is about to create or update Claude instructions.\n\n"
@@ -168,22 +170,22 @@ def handle_user_prompt_expansion(data: dict) -> tuple[int, str]:
             "Proceed with SuperCtx setup instead?"
         )
         return 2, msg
-        
+
     return 0, ""
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--event", required=True, choices=["PreToolUse", "UserPromptExpansion"])
     args = parser.parse_args()
-    
+
     stdin_data = sys.stdin.read()
     data = parse_input(stdin_data)
-    
+
     if args.event == "PreToolUse":
         code, msg = handle_pre_tool_use(data)
     else:
         code, msg = handle_user_prompt_expansion(data)
-        
+
     if code == 2:
         sys.stderr.write(msg + "\n")
         sys.exit(2)

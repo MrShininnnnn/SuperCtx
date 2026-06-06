@@ -1535,7 +1535,7 @@ def test_version_consistency():
     import json
     from pathlib import Path
     from superctx import __version__
-    
+
     root = Path(__file__).parent.parent
     # 1. pyproject.toml
     pyproject = root / "pyproject.toml"
@@ -1547,4 +1547,3 @@ def test_version_consistency():
     market_j = root / ".claude-plugin" / "marketplace.json"
     market_data = json.loads(market_j.read_text(encoding="utf-8"))
     assert market_data["plugins"][0]["version"] == __version__
-
