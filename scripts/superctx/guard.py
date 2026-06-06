@@ -111,7 +111,7 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
                 msg = (
                     f"Using SuperCtx, I found existing agent instruction files in this repo:\n"
                     f"{cands_str}\n\n"
-                    f"I can set up one shared context hub so this instruction stays consistent across connected agents.\n\n"
+                    f"I can set up one shared context hub so your instructions stay consistent across connected agents.\n\n"
                     f"This will:\n"
                     f"- create `.ctx/SUPERCTX.md`\n"
                     f"- back up the original instruction files under `.ctx/sources/`\n"
