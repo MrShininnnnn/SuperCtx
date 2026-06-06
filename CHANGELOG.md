@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-06-05
+
+### Added
+- Integrated `PreToolUse` write guard to intercept edits/writes to agent instruction files.
+- Intercepts writes in candidate repos, clean repos, and managed repos to enforce the hub-and-shim model.
+- Added `UserPromptExpansion` hook to intercept `/init` prompt.
+- Added unit/integration test coverage for path classification and interception rules.
+- Added version consistency test.
+
 ## [0.1.2] - 2026-06-05
 
 ### Changed

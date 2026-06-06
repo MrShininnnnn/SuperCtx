@@ -1529,3 +1529,21 @@ def test_hook_session_start_states(tmp_path):
     assert "generated shims" in res4.stdout
     # Must NOT mention /superctx:init at all — user should not need to type a command
     assert "/superctx:init" not in res4.stdout
+
+
+def test_version_consistency():
+    import json
+    from pathlib import Path
+    from superctx import __version__
+
+    root = Path(__file__).parent.parent
+    # 1. pyproject.toml
+    pyproject = root / "pyproject.toml"
+    assert f'version = "{__version__}"' in pyproject.read_text(encoding="utf-8")
+    # 2. plugin.json
+    plugin_j = root / ".claude-plugin" / "plugin.json"
+    assert json.loads(plugin_j.read_text(encoding="utf-8"))["version"] == __version__
+    # 3. marketplace.json
+    market_j = root / ".claude-plugin" / "marketplace.json"
+    market_data = json.loads(market_j.read_text(encoding="utf-8"))
+    assert market_data["plugins"][0]["version"] == __version__

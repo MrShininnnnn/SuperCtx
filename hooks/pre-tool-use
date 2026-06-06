@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# SuperCtx pre-tool-use hook.
+# Runs at PreToolUse. Read-only: this never writes anything.
+
+set -euo pipefail
+
+if [[ -z "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
+  exit 0
+fi
+
+PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" exec python3 -m superctx.guard --event PreToolUse
