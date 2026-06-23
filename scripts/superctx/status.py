@@ -1,4 +1,4 @@
-"""`superctx status` — read-only hub-and-shim health check report.
+"""Read-only hub-and-shim health and detection helpers.
 
 Health states:
   healthy             — all structural integrity checks passed for hub, shim, or backup
@@ -288,29 +288,59 @@ def detect_repo_state(project_dir: Path) -> dict:
 
         # Check hub file
         hub_p = core.hub_path(project_dir)
-        if not hub_p.is_file():
-            reasons.append("hub_missing")
-        elif not hub_p.read_text(encoding="utf-8").strip():
-            reasons.append("hub_empty")
+        hub_unreadable = False
+        try:
+            if not hub_p.is_file():
+                reasons.append("hub_missing")
+            elif not hub_p.read_text(encoding="utf-8").strip():
+                reasons.append("hub_empty")
+        except Exception:
+            hub_unreadable = True
+
+        if hub_unreadable:
+            reasons = ["hub_unreadable"]
+            candidates = []
+            for entry in registry.instruction_conventions():
+                live = project_dir / entry["path"]
+                if live.is_file():
+                    candidates.append(entry["path"])
+
+            return {
+                "state": "managed_needs_repair",
+                "candidates": sorted(candidates),
+                "reasons": reasons,
+                "recommended_action": "inspect",
+                "recommended_action_mutates_files": False
+            }
 
         files = manifest.get("files", [])
         tracked = {entry["path"] for entry in files}
+
+        if "hub_missing" in reasons or "hub_empty" in reasons:
+            return {
+                "state": "managed_needs_repair",
+                "candidates": [],
+                "reasons": sorted(reasons),
+                "recommended_action": "inspect",
+                "recommended_action_mutates_files": False
+            }
 
         for entry in files:
             rel = entry["path"]
             live = project_dir / rel
             backup = core.sources_dir(project_dir) / rel
+            backup_required = entry.get("backup_required", True)
 
             if not live.is_file():
                 reasons.append("missing_shim")
             elif not shim.is_shim_file(live):
-                if not backup.is_file():
+                if backup_required and not backup.is_file():
                     reasons.append("unbacked_live_file")
                     is_legacy = True
                 else:
                     reasons.append("broken_shim")
 
-            if not backup.is_file():
+            if backup_required and not backup.is_file():
                 reasons.append("missing_backup")
 
         # Include candidate files in reasons/candidates list

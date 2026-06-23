@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-22
+
+### Changed
+- Simplified the visible plugin command surface by consolidating setup, health checking, and shim repair under `/superctx:sync`.
+- Removed `/superctx:init`, `/superctx:status`, `superctx init`, and `superctx status` as user-facing commands. Setup and health logic now remain internal modules used by `sync`, hooks, and tests.
+- Kept `/superctx:add` as a targeted file operation; repositories should use `/superctx:sync` for global setup/check/repair before adding individual files.
+- Updated `_cmd_sync` to format outputs and map exit codes intentionally: `inspect`, `legacy`, and unresolved `repair` now exit with code `1`.
+- Bumped the plugin/package version to `0.1.4` so Claude Code installs can refresh the command palette and drop stale cached `/superctx:init` and `/superctx:status` entries after update/reload.
+
 ## [0.1.3] - 2026-06-05
 
 ### Added

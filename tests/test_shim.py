@@ -144,10 +144,8 @@ def test_sync_safety_with_shims(tmp_path):
 
     # 5. Run sync command
     sync_res = sync_cmd.run(tmp_path)
-    assert sync_res["mode"] == "repair"
+    assert sync_res["mode"] == "healthy"
     assert sync_res["healthy"] == ["CLAUDE.md"]
-    assert sync_res["repaired"] == []
-    assert sync_res["unresolved"] == []
 
     # 6. Verify backup is NOT overwritten with the shim content
     assert backup.read_text(encoding="utf-8") == "distinguished original content\n"

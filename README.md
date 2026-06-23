@@ -61,7 +61,7 @@ The cue should stay task-specific and brief. SuperCtx should not explain hub, sh
 
 ## What SuperCtx Auto-Detects
 
-SuperCtx scans the project directory during setup, status checks, session start, and protected instruction-file writes:
+SuperCtx scans the project directory during setup, health checks, session start, and protected instruction-file writes:
 
 1. **Verified Instruction Files** (Auto-connected):
    Root-level `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and hidden standard paths like `.claude/CLAUDE.md`, `.codex/AGENTS.md`, and `.github/copilot-instructions.md`. These are automatically added to `.ctx/manifest.toml`.
@@ -89,19 +89,17 @@ Claude Code copies marketplace plugins into Claude's local plugin cache. After i
 
 ### Load the plugin in Claude Code
 
-After installation, the primary command to check context health is:
+After installation, the primary command to manage context (including setup, health checks, and repairs) is:
 
 ```text
-/superctx:status
+/superctx:sync
 ```
 
 > [!NOTE]
-> SuperCtx is fully agent-guided. Use `/superctx:status` to check health. The agent will guide setup, add, and repair when needed. Normal users do not need to operate the other commands directly.
+> SuperCtx is fully agent-guided. Use `/superctx:sync` to check health and repair shims. The agent will guide setup, add, and repair when needed. Normal users do not need to operate the other commands directly.
 
-For advanced troubleshooting or developer verification, the following commands are available:
+For advanced custom instruction tracking:
 
-- `/superctx:init`: Scaffold/migrate the context hub.
-- `/superctx:sync`: Repair generated shims.
 - `/superctx:add <path>`: Register a new local instruction file.
 
 
@@ -144,7 +142,7 @@ SuperCtx is fully agent-guided. Under normal operation, the user does not need t
 2. **Connecting Files**: If you add new local context files (such as `.agy/ANTIGRAVITY.md`), the agent will notice them and ask if you want to connect them.
 3. **Repairing Shims**: If a generated shim is broken or missing, the agent will detect the issue and ask for your consent to repair it.
 
-If you want to manually verify the state of SuperCtx at any time, run `/superctx:status`. Advanced or agent-guided commands like `/superctx:sync` and `/superctx:add` will output details when actions are required.
+If you want to manually verify the state of SuperCtx at any time, run `/superctx:sync`. Advanced or agent-guided commands like `/superctx:add` will output details when actions are required.
 
 ## Command Discovery and Namespace Safety
 
@@ -152,15 +150,10 @@ SuperCtx commands are registered under the `superctx:` namespace to avoid collid
 
 After installing or reloading the plugin (`/reload-plugins`), you can verify command discovery:
 
-**Type `/superctx` in Claude Code** — the command palette will show available SuperCtx operations. While normal users only need to operate `/superctx:status`, you will see:
+**Type `/superctx` in Claude Code** — the command palette will show available SuperCtx operations:
 
 ```text
-Normal SuperCtx command:
-/superctx:status           - Check shared context health
-
-Advanced SuperCtx operations:
-/superctx:init             - Scaffold/migrate the context hub
-/superctx:sync             - Repair generated shims
+/superctx:sync             - Set up, check, repair, or report project context
 /superctx:add              - Register a new local instruction file
 ```
 
@@ -170,38 +163,36 @@ Advanced SuperCtx operations:
 /using-superctx            - Agent reference guide; normal users do not need to run this
 ```
 
-**Type `/status`** — only the Claude Code built-in status command should appear. SuperCtx does not register an unprefixed `/status` command.
+**Type `/sync`** — only the Claude Code built-in sync command should appear. SuperCtx does not register an unprefixed `/sync` command.
 
-**Run `/superctx:status`** — SuperCtx confirms health or reports specific problems with actionable next steps.
+**Run `/superctx:sync`** — SuperCtx confirms health or reports setup/repair status.
 
 ### Skill Naming Convention
 
 SuperCtx uses different naming rules for different kinds of skills:
 
-- **`superctx:` prefix** — SuperCtx product operations that mutate or inspect SuperCtx state (e.g. `/superctx:status`, `/superctx:init`, `/superctx:add`, `/superctx:sync`). The namespace prevents collisions with Claude Code built-ins.
+- **`superctx:` prefix** — SuperCtx product operations that mutate or inspect SuperCtx state (e.g. `/superctx:sync`, `/superctx:add`). The namespace prevents collisions with Claude Code built-ins.
 - **Plain process-style names** — Agent behavior and reference skills that teach the agent how to behave (e.g. `/using-superctx`). These follow the same pattern as other process/reference skills like `/using-superpowers`.
 
 ## CLI Usage
 
-SuperCtx also ships a Python CLI. From a source checkout with the package installed:
+SuperCtx also ships a Python CLI. From a source checkout with the package installed, the normal command surface mirrors the Claude plugin:
 
 ```bash
-superctx init
 superctx sync
-superctx status
 superctx add <path>
 ```
 
-`superctx sync` is a repair/recovery command for registered shims. It does not rewrite `.ctx/SUPERCTX.md` from tool-specific files.
+`superctx sync` is the global setup, health check, repair, and report command. It may initialize candidate repositories, report healthy managed repositories, repair safe generated shim issues, or stop with inspection guidance when the setup is ambiguous. It does not rewrite `.ctx/SUPERCTX.md` from tool-specific files.
 
 The same commands can be run without the console script:
 
 ```bash
-python -m superctx init
 python -m superctx sync
-python -m superctx status
 python -m superctx add <path>
 ```
+
+Setup and health detection remain internal engine capabilities used by `superctx sync` and read-only hooks. They are not exposed as public CLI commands.
 
 ## Current Status
 
@@ -211,7 +202,7 @@ SuperCtx is in early development. The first version focuses on one practical tas
 
 The current implementation includes:
 
-- agent-guided setup/add/repair operations plus `/superctx:status` as the normal health command
+- agent-guided setup/add/repair operations plus `/superctx:sync` as the global convergence command
 - auto-detection of known tool instruction files
 - a deterministic Python engine using the standard library
 - shim repair for missing or broken registered instruction files
@@ -266,10 +257,11 @@ python -m pytest tests/ -v
 Use the editable install for local CLI development:
 
 ```bash
-superctx init
 superctx sync
-superctx status
+superctx add <path>
 ```
+
+Setup and health internals remain available to the engine for targeted tests and hooks, but public workflows should exercise `superctx sync`.
 
 Project-local agent folders and workflow notes are gitignored to prevent committing local setups, but SuperCtx scans and reports files inside them as candidates:
 

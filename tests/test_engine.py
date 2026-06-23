@@ -1,4 +1,4 @@
-"""Unit tests for the SuperCtx engine (init / sync / status) using temp project dirs."""
+"""Unit tests for the SuperCtx engine using temp project dirs."""
 
 from importlib import resources
 from pathlib import Path
@@ -19,7 +19,7 @@ def test_conventions_registry_is_packaged_with_module():
     assert registry.load_conventions()[0]["path"] == "CLAUDE.md"
 
 
-# --- init -------------------------------------------------------------------
+# --- internal init engine ---------------------------------------------------
 
 def test_init_detects_and_scaffolds(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "claude ctx\n", "AGENTS.md": "agents ctx\n"})
@@ -81,17 +81,13 @@ def test_init_detects_hidden_instruction_files(tmp_path):
     assert "## From: AGENTS.md" in hub_content
     assert "root agents" in hub_content
 
-    # Since they are shims now, run sync to ensure it treats them as healthy and does not rewrite the hub.
     sync_result = sync_cmd.run(tmp_path)
-    assert sync_result["mode"] == "repair"
+    assert sync_result["mode"] == "healthy"
     assert set(sync_result["healthy"]) == {
         ".claude/CLAUDE.md",
         ".codex/AGENTS.md",
         "AGENTS.md"
     }
-    assert sync_result["repaired"] == []
-    assert sync_result["unresolved"] == []
-    assert sync_result["warnings"] == []
 
     # Verify status reports connected files as healthy shims with healthy inactive backups.
     status_rows = status_cmd.run(tmp_path)
@@ -179,9 +175,8 @@ def test_sync_healthy_shims_are_untouched(tmp_path):
 
     result = sync_cmd.run(tmp_path)
 
+    assert result["mode"] == "healthy"
     assert set(result["healthy"]) == {"CLAUDE.md", "AGENTS.md"}
-    assert result["repaired"] == []
-    assert result["unresolved"] == []
 
     assert live_c.read_text(encoding="utf-8") == content_c_before
     assert live_a.read_text(encoding="utf-8") == content_a_before
@@ -261,10 +256,20 @@ def test_sync_missing_backup_warning(tmp_path):
 
 
 def test_sync_uninitialized_repo(tmp_path):
-    import pytest
-    with pytest.raises(sync_cmd.SyncError) as exc_info:
-        sync_cmd.run(tmp_path)
-    assert "not initialized" in str(exc_info.value)
+    # 1. Empty project: returns not_candidate and does not initialize
+    result = sync_cmd.run(tmp_path)
+    assert result["mode"] == "not_candidate"
+    assert result["state"] == "not_candidate"
+    assert not core.ctx_dir(tmp_path).is_dir()
+
+    # 2. Candidate project: sync auto-initializes and returns init mode
+    make_repo(tmp_path, {"CLAUDE.md": "some context\n"})
+    result2 = sync_cmd.run(tmp_path)
+    assert result2["mode"] == "init"
+    assert result2["state"] == "candidate_repo"
+    assert result2["final_state"] == "healthy"
+    assert core.ctx_dir(tmp_path).is_dir()
+    assert core.manifest_path(tmp_path).is_file()
 
 
 def test_sync_empty_manifest_reports_no_registered_files(tmp_path):
@@ -281,11 +286,13 @@ def test_sync_empty_manifest_reports_no_registered_files(tmp_path):
     result = sync_cmd.run(tmp_path)
 
     assert result == {
-        "mode": "repair",
+        "mode": "healthy",
+        "state": "managed_healthy",
+        "final_state": "healthy",
+        "mutated": False,
         "healthy": [],
-        "repaired": [],
-        "unresolved": [],
-        "warnings": [],
+        "candidates": [],
+        "message": "All SuperCtx context links are healthy."
     }
 
 
@@ -304,7 +311,7 @@ def test_sync_legacy_mode_is_not_available(tmp_path):
     assert core.hub_path(tmp_path).read_text(encoding="utf-8") == hub_before
 
 
-# --- status -----------------------------------------------------------------
+# --- internal status engine -------------------------------------------------
 
 def test_status_healthy_shims(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "a\n", "AGENTS.md": "b\n"})
@@ -633,20 +640,27 @@ def test_init_with_candidates_only(tmp_path):
     assert manifest.get("files", []) == []
 
 
-def test_cli_init_candidate_output_is_agent_guided(tmp_path, capsys):
+def test_removed_public_cli_commands_are_rejected(capsys):
+    import pytest
     from superctx.__main__ import main
 
-    make_repo(tmp_path, {
-        ".agy/ANTIGRAVITY.md": "agy file\n",
-    })
+    # 1. Verify that --help output lists only sync and add, not init or status
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--help"])
+    assert exc_info.value.code == 0
+    help_out = capsys.readouterr().out
+    assert "sync" in help_out
+    assert "add" in help_out
+    assert "init" not in help_out
+    assert "status" not in help_out
 
-    exit_code = main(["init", str(tmp_path)])
+    # 2. Verify that running init or status fails with choice/argparse choices error
+    for command in ("init", "status"):
+        with pytest.raises(SystemExit) as exc_info:
+            main([command])
+        assert exc_info.value.code == 2
 
-    assert exit_code == 0
-    output = capsys.readouterr().out
-    assert ".agy/ANTIGRAVITY.md" in output
-    assert "Recommended action: Offer to connect these candidate files (with explicit consent)." in output
-    assert "/superctx:add" not in output
+    assert "invalid choice" in capsys.readouterr().err
 
 
 def test_lookup_known_convention():
@@ -663,12 +677,29 @@ def test_lookup_known_convention():
 def test_add_validates_manifest_exists(tmp_path):
     import pytest
     from superctx import add as add_cmd
-    # Without init, add should raise AddError
+    from superctx import core
+
+    # 1. Without .ctx/, add is targeted and must not bootstrap or rewrite unrelated files.
+    (tmp_path / "my_custom.md").write_text("some instruction", encoding="utf-8")
+    (tmp_path / "CLAUDE.md").write_text("claude instructions", encoding="utf-8")
+
     with pytest.raises(add_cmd.AddError) as exc_info:
-        add_cmd.run(tmp_path, "somefile.md")
-    assert "SuperCtx is not initialized in this project" in str(exc_info.value)
-    assert "explicit consent" in str(exc_info.value)
-    assert "superctx init" not in str(exc_info.value)
+        add_cmd.run(tmp_path, "my_custom.md")
+    assert "SuperCtx is not set up" in str(exc_info.value)
+    assert "superctx sync" in str(exc_info.value)
+    assert not core.ctx_dir(tmp_path).exists()
+    assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8") == "claude instructions"
+
+    init_cmd.run(tmp_path)
+    res = add_cmd.run(tmp_path, "my_custom.md")
+    assert res.status == "added"
+
+    # 2. With .ctx/ existing but manifest.toml deleted, add should raise AddError with inspect guidance
+    core.manifest_path(tmp_path).unlink()
+    with pytest.raises(add_cmd.AddError) as exc_info:
+        add_cmd.run(tmp_path, "my_custom.md")
+    assert "manifest is missing or invalid" in str(exc_info.value)
+    assert "inspect the setup" in str(exc_info.value)
 
 
 def test_add_validations_missing_and_directories(tmp_path):
@@ -1046,22 +1077,20 @@ def test_detect_repo_state_is_read_only(tmp_path):
 
 
 
-def test_cli_status_detect(tmp_path):
-    from superctx.__main__ import main
+def test_internal_detect_entrypoint(tmp_path):
+    from superctx import _detect
     import sys
     import json
     from io import StringIO
 
-    orig_argv = sys.argv
     orig_stdout = sys.stdout
     try:
-        sys.argv = ["superctx", "status", "--detect"]
         sys.stdout = StringIO()
         import os
         orig_cwd = os.getcwd()
         os.chdir(tmp_path)
         try:
-            exit_code = main()
+            exit_code = _detect.main([])
             assert exit_code == 0
             output = sys.stdout.getvalue()
             data = json.loads(output)
@@ -1069,7 +1098,6 @@ def test_cli_status_detect(tmp_path):
         finally:
             os.chdir(orig_cwd)
     finally:
-        sys.argv = orig_argv
         sys.stdout = orig_stdout
 
 
@@ -1153,17 +1181,15 @@ def test_detect_repo_state_managed_invalid_manifest(tmp_path):
     assert res["recommended_action_mutates_files"] is False
 
 
-def test_cli_status_detect_manifest_errors(tmp_path):
-    from superctx.__main__ import main
+def test_internal_detect_entrypoint_manifest_errors(tmp_path):
+    from superctx import _detect
     import sys
     import json
     from io import StringIO
     from superctx import core
 
-    orig_argv = sys.argv
     orig_stdout = sys.stdout
     try:
-        sys.argv = ["superctx", "status", "--detect"]
         sys.stdout = StringIO()
         import os
         orig_cwd = os.getcwd()
@@ -1174,7 +1200,7 @@ def test_cli_status_detect_manifest_errors(tmp_path):
             # 1. Malformed TOML
             core.manifest_path(tmp_path).write_text("invalid toml syntax = {broken\n", encoding="utf-8")
             sys.stdout = StringIO()
-            exit_code = main()
+            exit_code = _detect.main([])
             assert exit_code == 0
             data = json.loads(sys.stdout.getvalue())
             assert data["state"] == "managed_needs_repair"
@@ -1185,7 +1211,7 @@ def test_cli_status_detect_manifest_errors(tmp_path):
             # 2. Schema-invalid TOML
             core.manifest_path(tmp_path).write_text("files = 'not a list'\n", encoding="utf-8")
             sys.stdout = StringIO()
-            exit_code = main()
+            exit_code = _detect.main([])
             assert exit_code == 0
             data = json.loads(sys.stdout.getvalue())
             assert data["state"] == "managed_needs_repair"
@@ -1195,213 +1221,118 @@ def test_cli_status_detect_manifest_errors(tmp_path):
         finally:
             os.chdir(orig_cwd)
     finally:
-        sys.argv = orig_argv
         sys.stdout = orig_stdout
 
 
-def test_cli_status_manifest_errors_no_detect(tmp_path):
+def test_sync_cli_inspect_output_paths(tmp_path, capsys):
     from superctx.__main__ import main
-    import sys
-    from io import StringIO
     from superctx import core
 
-    orig_argv = sys.argv
-    orig_stdout = sys.stdout
-    try:
-        sys.argv = ["superctx", "status"]
-        sys.stdout = StringIO()
-        import os
-        orig_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
+    core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
 
-            # 1. Malformed TOML
-            core.manifest_path(tmp_path).write_text("invalid toml syntax = {broken\n", encoding="utf-8")
-            sys.stdout = StringIO()
-            exit_code = main()
-            assert exit_code == 0
-            output = sys.stdout.getvalue()
-            assert "configuration manifest or hub is missing or invalid" in output
-            assert "offer to inspect the setup" in output
+    # 1. Malformed TOML
+    core.manifest_path(tmp_path).write_text("invalid toml syntax = {broken\n", encoding="utf-8")
+    exit_code = main(["sync", str(tmp_path)])
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "configuration manifest is missing or invalid" in output
+    assert "offer to inspect the setup" in output
 
-            # 2. Schema-invalid TOML
-            core.manifest_path(tmp_path).write_text("files = 'not a list'\n", encoding="utf-8")
-            sys.stdout = StringIO()
-            exit_code = main()
-            assert exit_code == 0
-            output = sys.stdout.getvalue()
-            assert "configuration manifest is invalid" in output
-            assert "offer to inspect the setup" in output
-        finally:
-            os.chdir(orig_cwd)
-    finally:
-        sys.argv = orig_argv
-        sys.stdout = orig_stdout
+    # 2. Schema-invalid TOML
+    core.manifest_path(tmp_path).write_text("files = 'not a list'\n", encoding="utf-8")
+    exit_code = main(["sync", str(tmp_path)])
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "configuration manifest is missing or invalid" in output
+    assert "offer to inspect the setup" in output
+
+    # 3. Missing hub cannot be repaired automatically.
+    core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    if core.hub_path(tmp_path).exists():
+        core.hub_path(tmp_path).unlink()
+    exit_code = main(["sync", str(tmp_path)])
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "configuration manifest or hub is missing or invalid" in output
+    assert "offer to inspect the setup" in output
+
+    # 4. Corrupt/non-UTF-8 hub fails cleanly, without a traceback.
+    core.hub_path(tmp_path).write_bytes(b"\x80\xff\xfe")
+    exit_code = main(["sync", str(tmp_path)])
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "configuration manifest or hub is missing or invalid" in captured.out
+    assert "offer to inspect the setup" in captured.out
+    assert "Traceback" not in captured.err
 
 
-def test_cli_status_agent_guided_output_paths(tmp_path):
+def test_sync_cli_agent_guided_output_paths(tmp_path, capsys):
     from superctx.__main__ import main
-    import sys
-    from io import StringIO
     from superctx import core
 
-    orig_argv = sys.argv
-    orig_stdout = sys.stdout
-    try:
-        import os
-        orig_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            # 1. Candidate repo
-            d_cand = tmp_path / "cand"
-            d_cand.mkdir()
-            (d_cand / ".claude").mkdir()
-            (d_cand / ".claude" / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
+    # 1. Candidate repo initializes through sync.
+    d_cand = tmp_path / "cand"
+    d_cand.mkdir()
+    (d_cand / ".claude").mkdir()
+    (d_cand / ".claude" / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
 
-            os.chdir(d_cand)
-            sys.argv = ["superctx", "status"]
-            sys.stdout = StringIO()
-            exit_code = main()
-            assert exit_code == 0
-            output = sys.stdout.getvalue()
-            assert "Detected candidate instruction files" in output
-            assert "Recommended action: Offer to set up SuperCtx (with explicit consent)." in output
-            assert "/superctx:init" not in output
+    exit_code = main(["sync", str(d_cand)])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "SuperCtx initialized this repo" in output
+    assert ".claude/CLAUDE.md" in output
+    assert "/superctx:init" not in output
 
-            # 2. Broken shim
-            d_broken = tmp_path / "broken"
-            d_broken.mkdir()
-            (d_broken / ".claude").mkdir()
-            (d_broken / ".claude" / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
-            os.chdir(d_broken)
-            main(["init"])
-            # Break shim
-            (d_broken / ".claude" / "CLAUDE.md").write_text("broken shim content", encoding="utf-8")
+    # 2. Missing shim repairs through sync.
+    d_broken = tmp_path / "broken"
+    d_broken.mkdir()
+    (d_broken / ".claude").mkdir()
+    (d_broken / ".claude" / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
+    init_cmd.run(d_broken)
+    (d_broken / ".claude" / "CLAUDE.md").unlink()
 
-            sys.argv = ["superctx", "status"]
-            sys.stdout = StringIO()
-            exit_code = main()
-            assert exit_code == 0
-            output = sys.stdout.getvalue()
-            assert "Shim issues" in output
-            assert "Recommended action: Offer to repair shims (with explicit consent)." in output
-            assert "/superctx:sync" not in output
+    exit_code = main(["sync", str(d_broken)])
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Repaired shims" in output
+    assert ".claude/CLAUDE.md" in output
+    assert "/superctx:status" not in output
 
-            # 3. Untracked candidate
-            d_untracked = tmp_path / "untracked"
-            d_untracked.mkdir()
-            (d_untracked / ".claude").mkdir()
-            (d_untracked / ".claude" / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
-            os.chdir(d_untracked)
-            main(["init"])
-            # Create untracked local convention candidate
-            (d_untracked / ".agy").mkdir()
-            (d_untracked / ".agy" / "ANTIGRAVITY.md").write_text("# Instructions", encoding="utf-8")
+    # 3. Legacy state stops with migration guidance.
+    d_legacy = tmp_path / "legacy"
+    d_legacy.mkdir()
+    core.ctx_dir(d_legacy).mkdir()
+    core.manifest_path(d_legacy).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.hub_path(d_legacy).write_text("# Shared Context\n", encoding="utf-8")
+    (d_legacy / "CLAUDE.md").write_text("unbacked legacy contents", encoding="utf-8")
 
-            sys.argv = ["superctx", "status"]
-            sys.stdout = StringIO()
-            exit_code = main()
-            assert exit_code == 0
-            output = sys.stdout.getvalue()
-            assert "Untracked candidates" in output
-            assert "Recommended action: Offer to connect this file (with explicit consent)." in output
-            assert "/superctx:add" not in output
-
-            # 4. Missing hub
-            d_mishub = tmp_path / "mishub"
-            d_mishub.mkdir()
-            (d_mishub / ".claude").mkdir()
-            (d_mishub / ".claude" / "CLAUDE.md").write_text("# Instructions", encoding="utf-8")
-            os.chdir(d_mishub)
-            main(["init"])
-            # Delete hub
-            core.hub_path(d_mishub).unlink()
-
-            sys.argv = ["superctx", "status"]
-            sys.stdout = StringIO()
-            exit_code = main()
-            assert exit_code == 0
-            output = sys.stdout.getvalue()
-            assert "Hub missing" in output
-            assert "Recommended action: Explain the problem and offer to inspect the setup (automatic recovery not supported)." in output
-            assert "/superctx:init" not in output
-
-            # 5. Legacy state
-            d_legacy = tmp_path / "legacy"
-            d_legacy.mkdir()
-            os.chdir(d_legacy)
-            core.ctx_dir(d_legacy).mkdir()
-            core.manifest_path(d_legacy).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
-            (d_legacy / "CLAUDE.md").write_text("unbacked legacy contents", encoding="utf-8")
-
-            sys.argv = ["superctx", "status"]
-            sys.stdout = StringIO()
-            exit_code = main()
-            assert exit_code == 0
-            output = sys.stdout.getvalue()
-            assert "SuperCtx is present, but some instruction files are legacy" in output
-            assert "Recommended action: Offer to migrate/recover the legacy SuperCtx setup (with explicit consent)." in output
-        finally:
-            os.chdir(orig_cwd)
-    finally:
-        sys.argv = orig_argv
-        sys.stdout = orig_stdout
-
-
-def test_cli_status_corrupt_non_utf8_hub_no_traceback(tmp_path):
-    from superctx.__main__ import main
-    import sys
-    from io import StringIO
-    from superctx import core
-
-    orig_argv = sys.argv
-    orig_stdout = sys.stdout
-    try:
-        sys.argv = ["superctx", "status"]
-        sys.stdout = StringIO()
-        import os
-        orig_cwd = os.getcwd()
-        os.chdir(tmp_path)
-        try:
-            core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
-            core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
-            # Write invalid UTF-8 bytes to SUPERCTX.md
-            core.hub_path(tmp_path).write_bytes(b"\x80\xff\xfe")
-
-            sys.stdout = StringIO()
-            exit_code = main()
-            assert exit_code == 0
-            output = sys.stdout.getvalue()
-            assert "configuration manifest or hub is missing or invalid" in output
-            assert "offer to inspect the setup" in output
-        finally:
-            os.chdir(orig_cwd)
-    finally:
-        sys.argv = orig_argv
-        sys.stdout = orig_stdout
+    exit_code = main(["sync", str(d_legacy)])
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "SuperCtx is present, but some instruction files are legacy" in output
+    assert "Offer to migrate/recover the legacy SuperCtx setup" in output
+    assert "/superctx:init" not in output
 
 
 
 
 
 def test_sync_manifest_errors(tmp_path):
-    import pytest
-    from superctx.sync import run, SyncError
+    from superctx.sync import run
     from superctx import core
     core.ctx_dir(tmp_path).mkdir(parents=True, exist_ok=True)
 
     # 1. Malformed TOML syntax
     core.manifest_path(tmp_path).write_text("invalid toml syntax = {broken\n", encoding="utf-8")
-    with pytest.raises(SyncError) as exc:
-        run(tmp_path)
-    assert "unreadable" in str(exc.value)
+    result = run(tmp_path)
+    assert result["mode"] == "inspect"
+    assert result["state"] == "managed_needs_repair"
 
     # 2. Schema-invalid manifest (files is not a list)
     core.manifest_path(tmp_path).write_text("files = 'not a list'\n", encoding="utf-8")
-    with pytest.raises(SyncError) as exc:
-        run(tmp_path)
-    assert "invalid" in str(exc.value)
+    result2 = run(tmp_path)
+    assert result2["mode"] == "inspect"
+    assert result2["state"] == "managed_needs_repair"
 
 
 def test_detect_repo_state_managed_needs_repair_manifest_missing(tmp_path):
@@ -1548,6 +1479,34 @@ def test_hook_session_start_states(tmp_path):
     # Must NOT mention /superctx:init at all — user should not need to type a command
     assert "/superctx:init" not in res4.stdout
 
+    # 5. Managed healthy repo + untracked candidates -> state managed_healthy, connect offer
+    d5 = tmp_path / "case5"
+    core.ctx_dir(d5).mkdir(parents=True, exist_ok=True)
+    core.manifest_path(d5).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.hub_path(d5).write_text("# Shared Context", encoding="utf-8")
+    shim_content = shim.generate_shim("CLAUDE.md", "claude-at-import")
+    (d5 / "CLAUDE.md").write_text(shim_content, encoding="utf-8")
+    (core.sources_dir(d5) / "CLAUDE.md").parent.mkdir(parents=True, exist_ok=True)
+    (core.sources_dir(d5) / "CLAUDE.md").write_text("original content", encoding="utf-8")
+
+    # Write untracked candidate
+    (d5 / ".codex").mkdir(parents=True, exist_ok=True)
+    (d5 / ".codex" / "AGENTS.md").write_text("# Agents instructions", encoding="utf-8")
+
+    res5 = subprocess.run(
+        ["bash", str(hook_path)],
+        cwd=d5,
+        env=env,
+        capture_output=True,
+        text=True
+    )
+    assert res5.returncode == 0
+    assert "SuperCtx is active, but there are unconnected instruction files:" in res5.stdout
+    assert "- .codex/AGENTS.md" in res5.stdout
+    assert "Offer to connect these files" in res5.stdout
+    assert "/superctx:add" in res5.stdout
+
+
 
 def test_version_consistency():
     import json
@@ -1565,3 +1524,90 @@ def test_version_consistency():
     market_j = root / ".claude-plugin" / "marketplace.json"
     market_data = json.loads(market_j.read_text(encoding="utf-8"))
     assert market_data["plugins"][0]["version"] == __version__
+
+
+def test_removed_plugin_commands():
+    # Verify init and status SKILL.md files do not exist
+    base = Path(__file__).resolve().parents[1]
+    assert not (base / "skills" / "init" / "SKILL.md").exists()
+    assert not (base / "skills" / "status" / "SKILL.md").exists()
+
+    # Verify tracked user/developer docs do not document removed public commands.
+    for rel_path in [
+        "README.md",
+        "CONTRIBUTING.md",
+        "examples/demo-python-project/README.md",
+    ]:
+        doc_text = (base / rel_path).read_text(encoding="utf-8")
+        assert "/superctx:init" not in doc_text
+        assert "/superctx:status" not in doc_text
+        assert "superctx init" not in doc_text
+        assert "superctx status" not in doc_text
+
+
+def test_sync_cli_exit_codes(tmp_path):
+    import subprocess
+    import sys
+    import os
+    from superctx import core
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "scripts")
+
+    # 1. not_candidate -> exit 0
+    res = subprocess.run([sys.executable, "-m", "superctx", "sync", str(tmp_path)], capture_output=True, text=True, env=env)
+    assert res.returncode == 0
+    assert "No setup needed" in res.stdout
+
+    # 2. candidate_repo -> exit 0 (init healthy)
+    (tmp_path / "CLAUDE.md").write_text("context", encoding="utf-8")
+    res2 = subprocess.run([sys.executable, "-m", "superctx", "sync", str(tmp_path)], capture_output=True, text=True, env=env)
+    assert res2.returncode == 0
+    assert "SuperCtx initialized this repo" in res2.stdout
+
+    # 3. healthy -> exit 0
+    res3 = subprocess.run([sys.executable, "-m", "superctx", "sync", str(tmp_path)], capture_output=True, text=True, env=env)
+    assert res3.returncode == 0
+    assert "All SuperCtx context links are healthy." in res3.stdout
+
+    # 4. inspect -> exit 1 (manifest error)
+    core.manifest_path(tmp_path).write_text("invalid syntax = {broken", encoding="utf-8")
+    res4 = subprocess.run([sys.executable, "-m", "superctx", "sync", str(tmp_path)], capture_output=True, text=True, env=env)
+    assert res4.returncode == 1
+    assert "configuration manifest is missing or invalid" in res4.stdout
+
+    # 5. inspect -> exit 1 (corrupt hub error)
+    # Restore manifest
+    core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    # Write invalid UTF-8 bytes to SUPERCTX.md
+    core.hub_path(tmp_path).write_bytes(b"\x80\xff\xfe")
+    res5 = subprocess.run([sys.executable, "-m", "superctx", "sync", str(tmp_path)], capture_output=True, text=True, env=env)
+    assert res5.returncode == 1
+    assert "configuration manifest or hub is missing or invalid" in res5.stdout
+    assert "offer to inspect the setup" in res5.stdout
+    assert "Traceback" not in res5.stderr
+
+    # 6. managed healthy repo + untracked candidate -> exit 0, lists candidate, no mutation, offers connect
+    # Restore manifest and make healthy
+    core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.hub_path(tmp_path).write_text("# Shared Context", encoding="utf-8")
+    from superctx import shim
+    shim_content = shim.generate_shim("CLAUDE.md", "claude-at-import")
+    (tmp_path / "CLAUDE.md").write_text(shim_content, encoding="utf-8")
+    (core.sources_dir(tmp_path) / "CLAUDE.md").parent.mkdir(parents=True, exist_ok=True)
+    (core.sources_dir(tmp_path) / "CLAUDE.md").write_text("original content", encoding="utf-8")
+
+    # Write untracked candidate
+    (tmp_path / ".codex").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".codex" / "AGENTS.md").write_text("# Agents instructions", encoding="utf-8")
+
+    res6 = subprocess.run([sys.executable, "-m", "superctx", "sync", str(tmp_path)], capture_output=True, text=True, env=env)
+    assert res6.returncode == 0
+    assert "All SuperCtx context links are healthy." in res6.stdout
+    assert "Untracked candidates:" in res6.stdout
+    assert "- .codex/AGENTS.md" in res6.stdout
+    assert "Recommended action: Offer to connect these candidate files (with explicit consent)." in res6.stdout
+
+    # Verify no file mutations occurred (untracked candidate still has its original content and is not shimmed)
+    assert (tmp_path / ".codex" / "AGENTS.md").read_text(encoding="utf-8") == "# Agents instructions"
+    assert not shim.is_shim_file(tmp_path / ".codex" / "AGENTS.md")

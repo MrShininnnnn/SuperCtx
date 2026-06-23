@@ -85,7 +85,7 @@ Before releasing a new version of SuperCtx:
 2. **Update Changelog**: Document the release date and all added, changed, deprecated, removed, fixed, or security-patched features in `CHANGELOG.md`.
 3. **Verify Code Quality**:
    - Run the full test suite: `python -m pytest tests/ -v`
-   - Run the status CLI diagnostics and check path sanitization: `python -m superctx status`
+   - Run the global SuperCtx convergence command: `python -m superctx sync`
 4. **Clean Workspace**: Confirm that no local-only files (e.g. `.claude/`, `.codex/`, `.agy/`, `docs/`) are staged or committed.
 5. **Release & Test**:
    - Create a corresponding git tag and push to GitHub.

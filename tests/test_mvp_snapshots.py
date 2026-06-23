@@ -27,11 +27,13 @@ def test_demo_project_generates_expected_manifest_and_hub(tmp_path):
     assert init_result["created"] is True
     assert init_result["detected"] == ["CLAUDE.md", "AGENTS.md", "GEMINI.md"]
     assert sync_result == {
-        "mode": "repair",
+        "mode": "healthy",
+        "state": "managed_healthy",
+        "final_state": "healthy",
+        "mutated": False,
         "healthy": ["CLAUDE.md", "AGENTS.md", "GEMINI.md"],
-        "repaired": [],
-        "unresolved": [],
-        "warnings": [],
+        "candidates": [],
+        "message": "All SuperCtx context links are healthy."
     }
     # Assert status rows matches new schema
     assert next(r for r in status_rows if r["kind"] == "hub") == {
@@ -66,36 +68,28 @@ def test_demo_project_cli_round_trip(tmp_path):
         "PYTHONPATH": str(ROOT / "scripts"),
     }
 
-    init_result = subprocess.run(
-        [sys.executable, "-m", "superctx", "init", str(project)],
-        check=True,
-        env=env,
-        text=True,
-        capture_output=True,
-    )
-    sync_result = subprocess.run(
+    setup_result = subprocess.run(
         [sys.executable, "-m", "superctx", "sync", str(project)],
         check=True,
         env=env,
         text=True,
         capture_output=True,
     )
-    status_result = subprocess.run(
-        [sys.executable, "-m", "superctx", "status", str(project)],
+    healthy_result = subprocess.run(
+        [sys.executable, "-m", "superctx", "sync", str(project)],
         check=True,
         env=env,
         text=True,
         capture_output=True,
     )
 
-    assert "initialized" in init_result.stdout
-    assert "All SuperCtx shims are healthy" in sync_result.stdout
-    assert "Already healthy shims:" not in sync_result.stdout
-    assert "All SuperCtx context links are healthy" in status_result.stdout
-    assert "Hub:" not in status_result.stdout
-    assert "Registered files:" not in status_result.stdout
-    assert "SuperCtx diagnostics:" not in status_result.stdout
-    assert "plugin root:" not in status_result.stdout
+    assert "initialized" in setup_result.stdout
+    assert "All SuperCtx context links are healthy" in healthy_result.stdout
+    assert "Already healthy shims:" not in healthy_result.stdout
+    assert "Hub:" not in healthy_result.stdout
+    assert "Registered files:" not in healthy_result.stdout
+    assert "SuperCtx diagnostics:" not in healthy_result.stdout
+    assert "plugin root:" not in healthy_result.stdout
 
 
 def test_generated_sources_are_ignored_inside_ctx(tmp_path):

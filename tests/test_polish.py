@@ -214,7 +214,7 @@ def test_add_missing_unknown_convention_with_create_shim_raises(tmp_path):
 
 
 def test_add_missing_gemini_status_healthy(tmp_path):
-    """After creating GEMINI.md shim, /superctx:status reports Gemini as healthy."""
+    """After creating GEMINI.md shim, internal status reports Gemini as healthy."""
     from superctx import add as add_cmd
     init_cmd.run(tmp_path)
 
@@ -238,14 +238,19 @@ def test_cli_add_create_shim_flag(tmp_path):
     import os
     from superctx.__main__ import main
     from superctx.shim import is_shim_file
+    from superctx import sync as sync_cmd
 
     orig_cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
-        main(["init"])
+        init_cmd.run(tmp_path)
         exit_code = main(["add", "--create-shim", "GEMINI.md"])
         assert exit_code == 0
         assert is_shim_file(tmp_path / "GEMINI.md")
+        sync_result = sync_cmd.run(tmp_path)
+        assert sync_result["mode"] == "healthy"
+        assert "GEMINI.md" in sync_result["healthy"]
+        assert "warnings" not in sync_result
     finally:
         os.chdir(orig_cwd)
 
@@ -261,7 +266,7 @@ def test_cli_add_missing_file_without_create_shim_flag_fails(tmp_path):
     orig_stderr = sys.stderr
     os.chdir(tmp_path)
     try:
-        main(["init"])
+        init_cmd.run(tmp_path)
         sys.stderr = StringIO()
         exit_code = main(["add", "GEMINI.md"])
         err = sys.stderr.getvalue()
@@ -273,11 +278,11 @@ def test_cli_add_missing_file_without_create_shim_flag_fails(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Blocker 5: Healthy status output is concise (no hub/shim internals exposed)
+# Blocker 5: Healthy sync output is concise (no hub/shim internals exposed)
 # ---------------------------------------------------------------------------
 
-def test_status_healthy_output_is_concise(tmp_path):
-    """Healthy status must be concise — no hub/shim/backup internals on the happy path."""
+def test_sync_healthy_output_is_concise(tmp_path):
+    """Healthy sync output must be concise — no hub/shim/backup internals on the happy path."""
     import os
     import sys
     from io import StringIO
@@ -288,12 +293,12 @@ def test_status_healthy_output_is_concise(tmp_path):
     orig_stdout = sys.stdout
     os.chdir(tmp_path)
     try:
-        main(["init"])
+        main(["sync"])
         sys.stdout = StringIO()
-        exit_code = main(["status"])
+        exit_code = main(["sync"])
         assert exit_code == 0
         output = sys.stdout.getvalue()
-        assert "All SuperCtx context links are healthy" in output
+        assert "All SuperCtx context links are healthy." in output
         # Must NOT expose hub/shim/backup internals on the healthy path
         assert "Hub:" not in output
         assert "Registered files:" not in output
