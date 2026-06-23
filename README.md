@@ -79,8 +79,10 @@ After `/superctx:sync`:
   SUPERCTX.md
   manifest.toml
   sources/
-    .claude__CLAUDE.md
-    .codex__AGENTS.md
+    .claude/
+      CLAUDE.md
+    .codex/
+      AGENTS.md
     GEMINI.md
 
 .claude/CLAUDE.md
