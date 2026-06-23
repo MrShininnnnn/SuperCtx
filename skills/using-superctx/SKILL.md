@@ -29,12 +29,12 @@ SuperCtx provides a central project-local context layer using a hub-and-shim mod
 2. **Announce SuperCtx interactions.** When SuperCtx is relevant or actively shaping the work, announce in one short sentence before taking action:
    `Using SuperCtx to <purpose>.`
    Keep the announcement task-specific.
-3. **Do NOT ask users to manually edit `manifest.toml` or `SUPERCTX.md`, or manually run `/superctx:init`, `/superctx:add`, or `/superctx:sync` as the happy path unless they explicitly ask for commands.** Prefer agent action and internal command execution. If `/superctx:status` finds setup, add, repair, or migration opportunities, offer the action in natural language and ask for consent.
-4. **Avoid saying "sync context" unless actually running `/superctx:sync`.** The sync command is strictly for shim repair, not general context updates.
-5. **Do NOT import `.ctx/sources/` backups as active context.** Agents must not read or load files from `.ctx/sources/` as active context. SuperCtx internals may read them for recovery and status checks.
+3. **Do NOT ask users to manually edit `manifest.toml` or `SUPERCTX.md`, or manually run `/superctx:sync` or `/superctx:add` as the happy path unless they explicitly ask for commands.** Prefer agent action and internal command execution. If `/superctx:sync` reports setup, add, repair, or migration opportunities, offer the action in natural language and ask for consent.
+4. **Avoid saying "sync context" unless actually running `/superctx:sync`.**
+5. **Do NOT import `.ctx/sources/` backups as active context.** Agents must not read or load files from `.ctx/sources/` as active context.
 6. **Do NOT edit generated shims as the source of truth.** Tool-specific files are thin generated pointers to `.ctx/SUPERCTX.md`.
-7. **Use `/superctx:sync` for repair only.** It regenerates missing or broken shims from the hub; it does not update the hub from tool files.
-8. **Offer agent-guided setup with explicit user consent when relevant.** If a candidate repository is detected (state `candidate_repo`), do not run `/superctx:init` or mutate files without the user's explicit natural-language consent. Do not create `.ctx/` or any other files before receiving consent. Present the detected files, explain what setup will do, and ask for confirmation. Use this exact consent prompt:
+7. **Use `/superctx:sync` for convergence.** It handles initialization, health checks, and repairs.
+8. **Offer agent-guided setup with explicit user consent when relevant.** If a candidate repository is detected (no `.ctx/` folder but candidate files exist), do not run `/superctx:sync` or mutate files without the user's explicit natural-language consent. Present the detected files, explain what setup will do, and ask for confirmation. Use this exact consent prompt:
    > Using SuperCtx, I can set up one shared context hub for this repo.
    >
    > This will:
@@ -44,12 +44,12 @@ SuperCtx provides a central project-local context layer using a hub-and-shim mod
    >
    > Proceed?
 
-   Once the user confirms, run `/superctx:init`. If the user declines, leave the repo unchanged.
+   Once the user confirms, run `/superctx:sync`. If the user declines, leave the repo unchanged.
 9. **Guide legacy or broken setups to repair/migration/inspection.**
-   - If the state is `managed_needs_repair` and the recommended action is `repair`, offer to repair the broken or missing shims and run `/superctx:sync` internally after getting consent.
-   - If the state is `managed_needs_repair` and the recommended action is `inspect` (due to missing or invalid manifest), explain the problem clearly and do not run `sync` or `init`.
-   - If the state is `managed_legacy`, explain the situation clearly, warning that migration/recovery is required. Preserve existing instruction contents and use explicit user-approved migration steps; do not delete `.ctx` or run a fresh setup ad hoc.
-   Never run `/superctx:init` or mutate files on a repair/migration state without explicit user consent.
+   - If `/superctx:sync` reports `managed_needs_repair` and the recommended action is `repair`, offer to repair the broken or missing shims and run `/superctx:sync` internally after getting consent.
+   - If it reports `inspect` (due to missing or invalid manifest), explain the problem clearly and do not run `sync` or `init`.
+   - If it reports `legacy` layout, explain the situation clearly, warning that migration/recovery is required. Preserve existing instruction contents and use explicit user-approved migration steps.
+   Never run `/superctx:sync` or mutate files on a legacy/inspect state without explicit user consent.
 
 ### Action Cues (Before Action)
 
@@ -58,9 +58,8 @@ Announce these cues *before* starting the corresponding action or command. Repla
 | Situation | Phrase |
 | --- | --- |
 | Updating instructions | `Using SuperCtx to update the shared project context across connected agents.` |
-| Checking health | `Using SuperCtx to check context health.` |
+| Syncing/Checking health | `Using SuperCtx to synchronize and verify project context.` |
 | Adding a local file | `Using SuperCtx to connect <path> as a local context file.` |
-| Repairing shims | `Using SuperCtx to repair generated context shims.` |
 | Offering setup | `Using SuperCtx to offer project context management setup.` |
 
 ### Result Confirmation Phrases (After Action)
@@ -73,28 +72,27 @@ Use these phrases to report successful execution when the command output is heal
 
 ## Command Guide
 
-- `/superctx:init`: Scaffolds the `.ctx/` hub, auto-detects standard files, imports original content, stores inactive backups, and writes generated shims.
-- `/superctx:add <path>`: Tracks a local custom candidate file, imports its current content into the hub, stores an inactive backup, and writes a generated shim.
-- `/superctx:status`: Reports hub, shim, backup, and candidate health.
-- `/superctx:sync`: Repairs missing or broken registered shims without rewriting the hub.
+- `/superctx:sync`: Global setup, check, repair, and report command.
+- `/superctx:add <path>`: Tracks a local custom candidate file.
+- `/using-superctx`: Agent-facing reference skill.
 
 ## Example Workflows
 
 ### Workflow 1: Updating project instructions
 - **User:** "Update the project instructions to include Y."
-- **Agent Action:** Update `.ctx/SUPERCTX.md`, then run `/superctx:status` to verify that registered shims are still healthy.
+- **Agent Action:** Update `.ctx/SUPERCTX.md`, then run `/superctx:sync` to verify that registered shims are still healthy.
 
 ### Workflow 2: Checking context for a specific tool
 - **User:** "What context does Codex have?"
-- **Agent Action:** Inspect the registered Codex shim, then read `.ctx/SUPERCTX.md` as the canonical project context. If freshness matters, run `/superctx:status`.
+- **Agent Action:** Inspect the registered Codex shim, then read `.ctx/SUPERCTX.md` as the canonical project context. If freshness matters, run `/superctx:sync`.
 
 ### Workflow 3: Checking connection and health
 - **User:** "Is everything connected?"
-- **Agent Action:** Run `/superctx:status`.
+- **Agent Action:** Run `/superctx:sync`.
 
 ### Workflow 4: Repairing generated shims
 - **User:** "The Codex instruction file is missing."
-- **Agent Action:** Run `/superctx:status`. If the registered shim is missing or broken, explain the issue and offer to repair the shims. Once the user gives consent, run `/superctx:sync` internally.
+- **Agent Action:** Run `/superctx:sync`. If the registered shim is missing or broken, explain the issue and offer to repair the shims. Once the user gives consent, run `/superctx:sync` internally.
 
 ### Workflow 5: Tracking a new instruction file
 - **User:** "I added a new tool instruction file at .agy/ANTIGRAVITY.md."
@@ -102,6 +100,6 @@ Use these phrases to report successful execution when the command output is heal
 
 ### Workflow 6: Agent-guided setup in a candidate repo
 - **Context:** Session starts; hook reports `candidate_repo` with detected files `.claude/CLAUDE.md` and `.codex/AGENTS.md`.
-- **Agent Action:** Present the detected files and make the consent-based offer (see Rule 8). Do not run `/superctx:init` yet.
+- **Agent Action:** Present the detected files and make the consent-based offer (see Rule 8). Do not run `/superctx:sync` yet.
 - **User:** "Yes, go ahead."
-- **Agent Action:** Announce `Using SuperCtx to set up the shared project context for this repo.`, then run `/superctx:init`. Report the result concisely.
+- **Agent Action:** Announce `Using SuperCtx to set up the shared project context for this repo.`, then run `/superctx:sync`. Report the result concisely.

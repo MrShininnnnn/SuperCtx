@@ -18,53 +18,125 @@ class SyncError(Exception):
 
 def run(project_dir: Path) -> dict:
     project_dir = Path(project_dir)
-    manifest_path = core.manifest_path(project_dir)
-    if not manifest_path.is_file():
-        raise SyncError(
-            "SuperCtx is not initialized in this project. "
-            "Please offer to set up SuperCtx (with explicit consent) first."
-        )
 
-    try:
-        manifest = core.load_manifest(project_dir)
-    except core.SchemaError as e:
-        raise SyncError(f"manifest.toml is invalid: {e}")
-    except Exception as e:
-        raise SyncError(f"manifest.toml is unreadable: {e}")
+    from . import status as status_module
+    from . import init as init_cmd
 
-    healthy: list[str] = []
-    repaired: list[str] = []
-    unresolved: list[dict] = []
-    warnings: list[dict] = []
+    state_info = status_module.detect_repo_state(project_dir)
+    state = state_info["state"]
+    rec_action = state_info["recommended_action"]
 
-    for entry in manifest.get("files", []):
-        rel = entry["path"]
-        live = project_dir / rel
-        backup = core.sources_dir(project_dir) / rel
+    if state == "not_candidate":
+        return {
+            "mode": "not_candidate",
+            "state": "not_candidate",
+            "final_state": "not_candidate",
+            "mutated": False,
+            "message": "No SuperCtx setup needed (no candidate files found)."
+        }
 
-        # 1. Check if backup is missing
-        if not backup.is_file():
-            warnings.append({"path": rel, "reason": "missing_backup"})
+    elif state == "candidate_repo":
+        init_res = init_cmd.run(project_dir)
+        final_state = "needs_attention" if init_res.get("partial_shim_failure") else "healthy"
+        return {
+            "mode": "init",
+            "state": "candidate_repo",
+            "final_state": final_state,
+            "mutated": True,
+            "init_result": init_res,
+            "message": "SuperCtx initialized this repo with some shim failures." if final_state == "needs_attention" else "SuperCtx initialized this repo successfully."
+        }
 
-        # 2. Check live file health
-        if live.is_file() and shim.is_shim_file(live):
-            healthy.append(rel)
+    elif state == "managed_legacy":
+        return {
+            "mode": "legacy",
+            "state": "managed_legacy",
+            "final_state": "needs_attention",
+            "mutated": False,
+            "message": "SuperCtx is present, but some instruction files are legacy."
+        }
+
+    elif state == "managed_needs_repair" and rec_action == "inspect":
+        reasons = state_info.get("reasons", [])
+        if any(reason.startswith("hub_") for reason in reasons):
+            msg = "SuperCtx is present, but the configuration manifest or hub is missing or invalid."
         else:
-            # 3. Missing or broken shim, try to repair/apply shim
-            # force_backup=False prevents overwriting live edits if backup exists
-            apply_res = shim.apply_shim(project_dir, rel, force_backup=False)
-            if apply_res.get("shimmed"):
-                repaired.append(rel)
-            else:
-                unresolved.append({
-                    "path": rel,
-                    "reason": apply_res.get("reason", "unknown")
-                })
+            msg = "SuperCtx is present, but the configuration manifest is missing or invalid."
+        return {
+            "mode": "inspect",
+            "state": "managed_needs_repair",
+            "final_state": "needs_attention",
+            "mutated": False,
+            "message": msg
+        }
 
-    return {
-        "mode": "repair",
-        "healthy": healthy,
-        "repaired": repaired,
-        "unresolved": unresolved,
-        "warnings": warnings
-    }
+    elif state == "managed_healthy":
+        manifest = core.load_manifest(project_dir)
+        healthy_shims = [entry["path"] for entry in manifest.get("files", [])]
+        candidates = state_info.get("candidates", [])
+        return {
+            "mode": "healthy",
+            "state": "managed_healthy",
+            "final_state": "healthy",
+            "mutated": False,
+            "healthy": healthy_shims,
+            "candidates": sorted(candidates),
+            "message": "All SuperCtx context links are healthy."
+        }
+
+    elif state == "managed_needs_repair" and rec_action == "repair":
+        try:
+            manifest = core.load_manifest(project_dir)
+        except core.SchemaError as e:
+            raise SyncError(f"manifest.toml is invalid: {e}")
+        except Exception as e:
+            raise SyncError(f"manifest.toml is unreadable: {e}")
+
+        healthy: list[str] = []
+        repaired: list[str] = []
+        unresolved: list[dict] = []
+        warnings: list[dict] = []
+
+        for entry in manifest.get("files", []):
+            rel = entry["path"]
+            live = project_dir / rel
+            backup = core.sources_dir(project_dir) / rel
+            backup_required = entry.get("backup_required", True)
+
+            if backup_required and not backup.is_file():
+                warnings.append({"path": rel, "reason": "missing_backup"})
+
+            if live.is_file() and shim.is_shim_file(live):
+                healthy.append(rel)
+            else:
+                apply_res = shim.apply_shim(project_dir, rel, force_backup=False)
+                if apply_res.get("shimmed"):
+                    repaired.append(rel)
+                else:
+                    unresolved.append({
+                        "path": rel,
+                        "reason": apply_res.get("reason", "unknown")
+                    })
+
+        final_state = "needs_attention" if unresolved else "healthy"
+        msg = "SuperCtx shims repair complete with some unresolved issues." if unresolved else "SuperCtx shims repaired."
+        return {
+            "mode": "repair",
+            "state": "managed_needs_repair",
+            "final_state": final_state,
+            "mutated": len(repaired) > 0,
+            "healthy": healthy,
+            "repaired": repaired,
+            "unresolved": unresolved,
+            "warnings": warnings,
+            "message": msg
+        }
+
+    else:
+        return {
+            "mode": "inspect",
+            "state": state,
+            "final_state": "needs_attention",
+            "mutated": False,
+            "message": f"SuperCtx is in state {state}. Recommended action: {rec_action}."
+        }

@@ -24,11 +24,17 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
     manifest_path = core.manifest_path(project_dir)
     hub_path = core.hub_path(project_dir)
 
-    # 1. Validate manifest exists
-    if not manifest_path.exists():
+    # 1. Require the global sync flow to bootstrap repositories.
+    ctx_dir = core.ctx_dir(project_dir)
+    if not ctx_dir.is_dir():
         raise AddError(
-            "SuperCtx is not initialized in this project. "
-            "Please offer to set up SuperCtx (with explicit consent) first."
+            "SuperCtx is not set up for this repository. "
+            "Use superctx sync to set up/check/repair the shared context before adding a specific file."
+        )
+    elif not manifest_path.exists():
+        raise AddError(
+            "SuperCtx is present, but the configuration manifest is missing or invalid. "
+            "Please inspect the setup."
         )
 
     file_path = Path(input_path)
@@ -53,7 +59,12 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
         raise AddError("Cannot add files inside the .ctx directory.")
 
     # 3. Detect duplicate/tracked state
-    manifest = core.load_manifest(project_dir)
+    try:
+        manifest = core.load_manifest(project_dir)
+    except core.SchemaError as e:
+        raise AddError(f"SuperCtx configuration manifest is invalid: {e}. Please inspect the setup.")
+    except Exception as e:
+        raise AddError(f"SuperCtx configuration manifest is unreadable: {e}. Please inspect the setup.")
     tracked_files = manifest.setdefault("files", [])
 
     for entry in tracked_files:

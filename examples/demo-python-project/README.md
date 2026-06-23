@@ -5,7 +5,5 @@ This tiny project exists to verify the SuperCtx MVP against real tool instructio
 Run from this directory:
 
 ```bash
-superctx init
 superctx sync
-superctx status
 ```

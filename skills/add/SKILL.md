@@ -7,10 +7,15 @@ description: Use when the user wants to start tracking a local custom instructio
 
 Add a local candidate file to the SuperCtx manifest to begin tracking it.
 
-## Before Running
+If SuperCtx is not set up yet (no `.ctx/` directory exists), do not run this command first. Use `/superctx:sync` for the global setup/check/repair flow, then use `/superctx:add <path>` for targeted file connection after the shared context hub exists.
 
-Announce that you are using SuperCtx (replace `<path>` with the actual file path argument):
-> Using SuperCtx to connect <path> as a local context file.
+If `.ctx/` exists but the configuration manifest is missing or invalid, the command will raise an error with inspect guidance.
+
+## Before Running (Consent Boundary)
+
+1. **Direct User Invocation**: If the user explicitly typed `/superctx:add <path>` or asked you to connect a file, you have consent. Announce the action:
+   > Using SuperCtx to connect <path> as a local context file.
+2. **Agent-Initiated Flow**: If you detect an untracked candidate file during a task and want to add it, you **MUST** obtain explicit natural-language user consent first. Offer to connect it, explain what it does, and run the command internally only after getting consent.
 
 ## Check File Existence First
 
@@ -44,4 +49,4 @@ Explain clearly that the file must exist before it can be tracked:
 
 ## Then report to the user
 
-Present the result printed by the command. On the healthy path, keep the report concise: confirm the file is now connected and that `.ctx/SUPERCTX.md` is the canonical context. Only surface backup or shim details if the command reports a warning or error.
+Present the result printed by the command. On the healthy path, keep the report concise: confirm the file is now connected and that `.ctx/SUPERCTX.md` is the canonical context.
