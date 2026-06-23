@@ -2,121 +2,105 @@
 
 **All the context, in one place.**
 
-SuperCtx keeps AI coding assistants aligned on one shared project context. It creates a project-local `.ctx/` hub from files like `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`, then keeps tool-specific instruction files as thin generated shims pointing back to that hub.
+SuperCtx keeps AI coding assistant instruction files aligned through one shared `.ctx/SUPERCTX.md` hub.
 
-Many coding tools use their own project instruction files:
-
-```text
-CLAUDE.md
-AGENTS.md
-GEMINI.md
-.github/copilot-instructions.md
-```
-
-When you use more than one tool, those files can drift apart. SuperCtx gives the project one context layer and exposes it consistently across Claude Code, Codex, Gemini, Antigravity, Copilot, Cursor, and other AI coding tools.
+AI coding assistants like Claude Code, Gemini, Codex, and Copilot each rely on their own instruction files. If you use multiple assistants in the same project, these files can easily drift. SuperCtx consolidates your project guidelines into a single hub and exposes them consistently via generated shims.
 
 ## Why SuperCtx?
 
-Use SuperCtx when a repository has more than one AI coding tool and you want those tools to share the same project assumptions.
-
-SuperCtx helps you:
-
-- reduce repeated copy-paste between tool-specific instruction files
-- keep context project-local instead of sending it to a cloud memory service
-- inspect which instruction files are connected to the shared context hub
-- detect missing or broken generated shims and missing inactive backups
-- dogfood project context workflows across Claude Code, Codex, Gemini, and related tools
+AI coding tools expect project context in different instruction files (e.g., `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`). When using multiple tools in a single repository:
+- Different tools expect guidelines in different paths.
+- Instruction files can quickly drift out of sync.
+- SuperCtx solves this by maintaining a single, shared source of truth.
 
 ## How It Works
 
-SuperCtx uses a project-local context folder:
+SuperCtx maps your workspace's context guidelines through a single central hub:
 
 ```text
-.ctx/
+.ctx/SUPERCTX.md        # source of truth
+
+.claude/CLAUDE.md       # generated shim
+.codex/AGENTS.md        # generated shim
+GEMINI.md               # generated shim
 ```
 
-The `.ctx/` folder is the centralized hub for project context. SuperCtx makes `.ctx/SUPERCTX.md` the canonical hub, and generates thin shims pointing back to it:
+- `.ctx/SUPERCTX.md` is the canonical, version-controlled shared context hub.
+- Tool-specific instruction files remain at their expected paths, but become generated shims pointing back to the hub.
+- Original instruction files are backed up under `.ctx/sources/` before replacement.
 
-```text
-               ┌─> CLAUDE.md (shim)
-.ctx/SUPERCTX.md ┼─> AGENTS.md (shim)
-               └─> GEMINI.md (shim)
-```
+## Install
 
-`SUPERCTX.md` is a version-controlled Markdown file and the canonical shared context hub. You can inspect or edit it directly if needed, but the normal workflow is to ask the agent to update project context. Original tool instruction files are backed up and converted to thin referential shims.
-
-A built-in write guard also intercepts direct edits/writes to protected instruction files, guiding the agent to update the shared context hub instead.
-
-### Agent-Native Bootstrapping
-
-SuperCtx includes a built-in agent reference skill, `/using-superctx`. This is an agent reference / advanced skill. Normal users do not need to run this command; the agent uses it automatically to orient itself on the project's context boundaries and active files.
-
-When SuperCtx is active, the agent uses `.ctx/SUPERCTX.md` as shared project context through generated shims. You normally ask the agent to update project context naturally instead of managing Markdown or TOML by hand.
-
-When SuperCtx is actively helping, the agent may use a short cue such as:
-
-`Using SuperCtx to check context health.`
-
-The cue should stay task-specific and brief. SuperCtx should not explain hub, shim, or backup internals unless you ask.
-
-## What SuperCtx Auto-Detects
-
-SuperCtx scans the project directory during setup, health checks, session start, and protected instruction-file writes:
-
-1. **Verified Instruction Files** (Auto-connected):
-   Root-level `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and hidden standard paths like `.claude/CLAUDE.md`, `.codex/AGENTS.md`, and `.github/copilot-instructions.md`. These are automatically added to `.ctx/manifest.toml`.
-2. **Supported Folder Candidates** (Surfaced, not auto-connected):
-   Known standard folder layouts like `.agents/rules/` and `agents/skills/` are surfaced as candidates for future connection work.
-3. **Legacy or Uncertain Candidates** (Surfaced, not auto-connected):
-   Legacy layouts such as `.agent/rules/` or `.agents/skills/` are reported.
-4. **Unverified Local Candidates** (Surfaced, not auto-connected):
-   Local conventions such as `.agy/` or `.agy/ANTIGRAVITY.md` are surfaced and labeled as unverified local candidates (not official support).
-
-## User Installation
-
-SuperCtx is early software. Today, install it directly from GitHub for Claude Code or run the Python CLI from a source checkout.
-
-### Install directly from GitHub today
-
-From inside Claude Code, add this repository as a plugin marketplace and install the `superctx` plugin:
+Inside Claude Code, add this repository as a plugin marketplace and install the `superctx` plugin:
 
 ```text
 /plugin marketplace add MrShininnnnn/SuperCtx
 /plugin install superctx@superctx
 ```
 
-Claude Code copies marketplace plugins into Claude's local plugin cache. After installing or updating the plugin, restart Claude Code if the new skills do not appear immediately.
+## Use
 
-### Load the plugin in Claude Code
+### `/superctx:sync`
 
-After installation, the primary command to manage context (including setup, health checks, and repairs) is:
+Set up, check, repair, and report SuperCtx state for the current repository.
 
+Use it when:
+- first setting up SuperCtx;
+- checking whether SuperCtx is healthy;
+- repairing generated shims;
+- bringing the repo back into the expected SuperCtx layout.
+
+### `/superctx:add <path>`
+
+Add or connect one specific instruction file.
+
+Examples:
 ```text
-/superctx:sync
+/superctx:add GEMINI.md
+/superctx:add .github/copilot-instructions.md
+/superctx:add .agy/ANTIGRAVITY.md
 ```
 
-> [!NOTE]
-> SuperCtx is fully agent-guided. Use `/superctx:sync` to check health and repair shims. The agent will guide setup, add, and repair when needed. Normal users do not need to operate the other commands directly.
+### `/using-superctx`
 
-For advanced custom instruction tracking:
+Agent-facing reference skill that explains how SuperCtx works.
 
-- `/superctx:add <path>`: Register a new local instruction file.
+*Note: This is an agent-facing skill that coding assistants use to guide their context workflows; you do not need to run it yourself.*
 
+## Example
 
-### Coming Soon: Claude Community Marketplace
-
-If accepted into the Claude community marketplace, SuperCtx will be installable with:
-
+Before connecting:
 ```text
-/plugin marketplace add anthropics/claude-plugins-community
-/plugin install superctx@claude-community
+.claude/CLAUDE.md
+.codex/AGENTS.md
+GEMINI.md
 ```
 
-Until then, use the GitHub installation path above.
+After connecting with SuperCtx:
+```text
+.ctx/SUPERCTX.md
+.ctx/manifest.toml
+.ctx/sources/
 
-## Troubleshooting stale plugin installs
+.claude/CLAUDE.md
+.codex/AGENTS.md
+GEMINI.md
+```
 
-If you suspect a cached or stale version is running, or if you need to force-update SuperCtx to the latest version, run the following troubleshooting commands inside Claude Code:
+Your original files are safely backed up under `.ctx/sources/`, while the live files are replaced with generated shims.
+
+## CLI
+
+SuperCtx also includes a lightweight Python CLI:
+
+```bash
+superctx sync
+superctx add <path>
+```
+
+## Updating the Plugin
+
+To update the plugin or troubleshoot a stale installation in Claude Code, run:
 
 ```text
 /plugin marketplace update superctx
@@ -124,175 +108,36 @@ If you suspect a cached or stale version is running, or if you need to force-upd
 /reload-plugins
 ```
 
-To force-clear the local cache and reinstall the plugin:
+## Safety
 
-```text
-/plugin uninstall superctx
-/plugin install superctx@superctx
-/reload-plugins
-```
+- **Local First**: Files are managed entirely within your local repository.
+- **Automatic Backups**: Pre-existing instruction files are backed up to `.ctx/sources/` before shimming.
+- **Clearly Marked Shims**: Generated files are explicitly tagged with header comments warning against direct manual edits.
+- **No Secrets**: Never place credentials, API keys, or private sessions in context instruction files.
 
-As a last resort if plugin caches persist, you can manually clear the Claude plugin cache directories under your user home profile.
+## Development
 
-## Onboarding & Guided Setup
-
-SuperCtx is fully agent-guided. Under normal operation, the user does not need to run setup, add, or repair commands. The agent handles these operations internally after obtaining your explicit consent before making any changes.
-
-1. **Setup**: When a session starts in a candidate repository with standard instruction files, the agent automatically detects it, explains what changes will be made, and asks for your consent to set up SuperCtx.
-2. **Connecting Files**: If you add new local context files (such as `.agy/ANTIGRAVITY.md`), the agent will notice them and ask if you want to connect them.
-3. **Repairing Shims**: If a generated shim is broken or missing, the agent will detect the issue and ask for your consent to repair it.
-
-If you want to manually verify the state of SuperCtx at any time, run `/superctx:sync`. Advanced or agent-guided commands like `/superctx:add` will output details when actions are required.
-
-## Command Discovery and Namespace Safety
-
-SuperCtx commands are registered under the `superctx:` namespace to avoid colliding with Claude Code built-in slash commands such as `/init`, `/status`, and `/sync`.
-
-After installing or reloading the plugin (`/reload-plugins`), you can verify command discovery:
-
-**Type `/superctx` in Claude Code** — the command palette will show available SuperCtx operations:
-
-```text
-/superctx:sync             - Set up, check, repair, or report project context
-/superctx:add              - Register a new local instruction file
-```
-
-**Type `/using`** — the agent reference skill will appear:
-
-```text
-/using-superctx            - Agent reference guide; normal users do not need to run this
-```
-
-**Type `/sync`** — only the Claude Code built-in sync command should appear. SuperCtx does not register an unprefixed `/sync` command.
-
-**Run `/superctx:sync`** — SuperCtx confirms health or reports setup/repair status.
-
-### Skill Naming Convention
-
-SuperCtx uses different naming rules for different kinds of skills:
-
-- **`superctx:` prefix** — SuperCtx product operations that mutate or inspect SuperCtx state (e.g. `/superctx:sync`, `/superctx:add`). The namespace prevents collisions with Claude Code built-ins.
-- **Plain process-style names** — Agent behavior and reference skills that teach the agent how to behave (e.g. `/using-superctx`). These follow the same pattern as other process/reference skills like `/using-superpowers`.
-
-## CLI Usage
-
-SuperCtx also ships a Python CLI. From a source checkout with the package installed, the normal command surface mirrors the Claude plugin:
+For local development or testing:
 
 ```bash
-superctx sync
-superctx add <path>
-```
-
-`superctx sync` is the global setup, health check, repair, and report command. It may initialize candidate repositories, report healthy managed repositories, repair safe generated shim issues, or stop with inspection guidance when the setup is ambiguous. It does not rewrite `.ctx/SUPERCTX.md` from tool-specific files.
-
-The same commands can be run without the console script:
-
-```bash
-python -m superctx sync
-python -m superctx add <path>
-```
-
-Setup and health detection remain internal engine capabilities used by `superctx sync` and read-only hooks. They are not exposed as public CLI commands.
-
-## Current Status
-
-SuperCtx is in early development. The first version focuses on one practical task:
-
-> Keep project-specific AI coding context in one local hub and expose it through tool-specific shims.
-
-The current implementation includes:
-
-- agent-guided setup/add/repair operations plus `/superctx:sync` as the global convergence command
-- auto-detection of known tool instruction files
-- a deterministic Python engine using the standard library
-- shim repair for missing or broken registered instruction files
-- snapshot tests for generated demo project files
-- CI for the Python test suite
-- a Claude Code plugin manifest and marketplace catalog installable from GitHub
-
-## What SuperCtx Is
-
-SuperCtx is:
-
-- a project-context hub and shim tool
-- a shared context layer for AI coding tools
-- a way to reduce repeated copy-paste
-- a way to keep coding assistants aligned
-- a project-local system, not a cloud service
-
-## What SuperCtx Is Not
-
-SuperCtx is not:
-
-- a coding assistant
-- an agent framework
-- a task orchestration system
-- a replacement for Claude Code, Codex, Gemini, Cursor, Copilot, or Antigravity
-- a cloud memory database
-- a secret manager
-
-## Design Principles
-
-1. One project context.
-2. Keep context project-local.
-3. Start simple.
-4. Treat generated files as disposable.
-5. Avoid storing secrets, credentials, caches, and local sessions.
-6. Support one implementation path first, but design for many tools.
-7. Stay focused on shared project context and shim repair.
-
-## Contributor / Development Setup
-
-SuperCtx requires Python 3.9 or newer (3.11+ recommended).
-
-From a fresh clone:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[test]'
+# Run the test suite
 python -m pytest tests/ -v
+
+# Validate the Claude plugin manifest
+claude plugin validate .
 ```
-
-Use the editable install for local CLI development:
-
-```bash
-superctx sync
-superctx add <path>
-```
-
-Setup and health internals remain available to the engine for targeted tests and hooks, but public workflows should exercise `superctx sync`.
-
-Project-local agent folders and workflow notes are gitignored to prevent committing local setups, but SuperCtx scans and reports files inside them as candidates:
-
-```text
-.claude/
-.codex/
-.agy/
-docs/
-```
-
-Keep those local-only files out of commits.
-
-## Contributing
-
-Contributions, bug reports, examples, and use cases are welcome.
-
-SuperCtx is still early, so please open an issue before making large design changes, adding new skills, or changing generated file conventions.
-
-For contribution details, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Project Policies
 
-- [Privacy Policy](PRIVACY.md)
-- [Security Policy](SECURITY.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Contributing](CONTRIBUTING.md)
+- [PRIVACY.md](PRIVACY.md)
+- [SECURITY.md](SECURITY.md)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Author
 
-SuperCtx is created and maintained by **Ning Shi (Shining)**.
+Ning Shi (Shining).
 
 ## License
 
-MIT
+MIT.
