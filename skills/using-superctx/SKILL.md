@@ -31,7 +31,7 @@ SuperCtx provides a central project-local context layer using a hub-and-shim mod
    Keep the announcement task-specific.
 3. **Do NOT ask users to manually edit `manifest.toml` or `SUPERCTX.md`, or manually run `/superctx:sync` or `/superctx:add` as the happy path unless they explicitly ask for commands.** Prefer agent action and internal command execution. If `/superctx:sync` reports setup, add, repair, or migration opportunities, offer the action in natural language and ask for consent.
 4. **Avoid saying "sync context" unless actually running `/superctx:sync`.**
-5. **Do NOT import `.ctx/sources/` backups as active context.** Agents must not read or load files from `.ctx/sources/` as active context.
+5. **Do NOT read, import, or edit `.ctx/sources/**` as active context.** `.ctx/sources/` contains inactive recovery copies of original pre-SuperCtx files. These files are for recovery and audit only, not canonical editable context. When updating project context, edit `.ctx/SUPERCTX.md`.
 6. **Do NOT edit generated shims as the source of truth.** Tool-specific files are thin generated pointers to `.ctx/SUPERCTX.md`.
 7. **Use `/superctx:sync` for convergence.** It handles initialization, health checks, and repairs.
 8. **Offer agent-guided setup with explicit user consent when relevant.** If a candidate repository is detected (no `.ctx/` folder but candidate files exist), do not run `/superctx:sync` or mutate files without the user's explicit natural-language consent. Present the detected files, explain what setup will do, and ask for confirmation. Use this exact consent prompt:

@@ -16,6 +16,10 @@ def test_classify_write_path():
     assert classify_write_path(".other-tool/config", tracked) == "unknown_hidden_path"
     # 6. Normal file
     assert classify_write_path("src/main.py", tracked) == "normal_file"
+    # 7. SuperCtx backup archive
+    assert classify_write_path(".ctx/sources/.claude/CLAUDE.md", tracked) == "superctx_backup"
+    assert classify_write_path(".ctx/sources/.codex/AGENTS.md", tracked) == "superctx_backup"
+    assert classify_write_path(".ctx/sources/.agy/ANTIGRAVITY.md", tracked) == "superctx_backup"
 
 
 def test_pre_tool_use_candidate_repo(tmp_path):
@@ -63,6 +67,62 @@ def test_pre_tool_use_managed_healthy(tmp_path):
     code, msg = handle_pre_tool_use(payload)
     assert code == 2
     assert "is a generated SuperCtx shim" in msg
+
+
+@pytest.mark.parametrize(
+    "backup_path",
+    [
+        ".ctx/sources/.claude/CLAUDE.md",
+        ".ctx/sources/.codex/AGENTS.md",
+        ".ctx/sources/.agy/ANTIGRAVITY.md",
+    ],
+)
+def test_pre_tool_use_blocks_superctx_backup_edits(tmp_path, backup_path):
+    from superctx.guard import handle_pre_tool_use
+
+    ctx = tmp_path / ".ctx"
+    ctx.mkdir()
+    (ctx / "manifest.toml").write_text(
+        '[project]\nname="test"\nhub=".ctx/SUPERCTX.md"\n',
+        encoding="utf-8",
+    )
+    (ctx / "SUPERCTX.md").write_text("hub content", encoding="utf-8")
+    target = tmp_path / backup_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("original backup", encoding="utf-8")
+
+    code, msg = handle_pre_tool_use({
+        "cwd": str(tmp_path),
+        "tool_name": "Edit",
+        "tool_input": {"file_path": str(target)},
+    })
+
+    assert code == 2
+    assert ".ctx/sources/" in msg
+    assert "inactive backups" in msg
+    assert "Edit `.ctx/SUPERCTX.md` instead." in msg
+
+
+def test_pre_tool_use_allows_superctx_hub_edits(tmp_path):
+    from superctx.guard import handle_pre_tool_use
+
+    ctx = tmp_path / ".ctx"
+    ctx.mkdir()
+    (ctx / "manifest.toml").write_text(
+        '[project]\nname="test"\nhub=".ctx/SUPERCTX.md"\n',
+        encoding="utf-8",
+    )
+    hub = ctx / "SUPERCTX.md"
+    hub.write_text("hub content", encoding="utf-8")
+
+    code, msg = handle_pre_tool_use({
+        "cwd": str(tmp_path),
+        "tool_name": "Edit",
+        "tool_input": {"file_path": str(hub)},
+    })
+
+    assert code == 0
+    assert msg == ""
 
 
 def test_pre_tool_use_managed_needs_repair_explains_consent_flow(tmp_path):
