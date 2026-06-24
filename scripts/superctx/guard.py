@@ -12,6 +12,9 @@ def classify_write_path(path_str: str, tracked_paths: set[str]) -> str:
     path_str = path_str.strip().replace("\\", "/").lstrip("/")
     parts = Path(path_str).parts
 
+    if path_str == ".ctx/sources" or path_str.startswith(".ctx/sources/"):
+        return "superctx_backup"
+
     ignored_folders = {".git", ".venv", ".cache", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".node_modules"}
     if any(part in ignored_folders for part in parts):
         return "ignored_hidden_path"
@@ -100,6 +103,15 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
             continue
 
         classification = classify_write_path(rel_str, tracked_paths)
+        if classification == "superctx_backup":
+            msg = (
+                "Using SuperCtx to protect original backup files.\n\n"
+                f"`{rel_str}` is under `.ctx/sources/`, which stores inactive backups of original "
+                "pre-SuperCtx files.\n"
+                "Do not edit backup files as live project context. Edit `.ctx/SUPERCTX.md` instead."
+            )
+            return 2, msg
+
         if classification in ("ignored_hidden_path", "unknown_hidden_path", "normal_file", "known_agent_folder_file"):
             continue
 
