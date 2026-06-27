@@ -113,18 +113,18 @@ def test_source_runtime_works_without_tomllib_or_tomli(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_hub_banner_is_agent_native(tmp_path):
-    """Generated hubs must use agent-native wording, not manual-edit wording."""
+    """Generated hubs must name themselves as the canonical editable hub."""
     make_repo(tmp_path, {"CLAUDE.md": "ctx\n"})
     init_cmd.run(tmp_path)
 
     hub_text = core.hub_path(tmp_path).read_text(encoding="utf-8")
 
-    assert "managed by SuperCtx" in hub_text
-    assert "Edit this file to update instructions" not in hub_text
+    assert "AUTHOR HERE" in hub_text
+    assert "canonical editable context hub" in hub_text
 
 
 def test_add_hub_section_uses_agent_native_banner(tmp_path):
-    """add command preserves agent-native banner wording when adding sections."""
+    """add command preserves the canonical-editable-hub banner when adding sections."""
     from superctx import add as add_cmd
     make_repo(tmp_path, {"CLAUDE.md": "ctx\n"})
     init_cmd.run(tmp_path)
@@ -136,8 +136,28 @@ def test_add_hub_section_uses_agent_native_banner(tmp_path):
     add_cmd.run(tmp_path, ".agy/ANTIGRAVITY.md")
     hub_text = core.hub_path(tmp_path).read_text(encoding="utf-8")
 
-    assert "managed by SuperCtx" in hub_text
-    assert "Edit this file to update instructions" not in hub_text
+    assert "AUTHOR HERE" in hub_text
+    assert "canonical editable context hub" in hub_text
+
+
+def test_add_recreates_hub_with_policy_header_when_hub_missing(tmp_path):
+    """If the hub is missing when add runs, the recreated hub gets the policy header."""
+    from superctx import add as add_cmd
+    make_repo(tmp_path, {"CLAUDE.md": "ctx\n"})
+    init_cmd.run(tmp_path)
+
+    # Simulate a lost hub before adding a new file.
+    core.hub_path(tmp_path).unlink()
+
+    agy_file = tmp_path / ".agy" / "ANTIGRAVITY.md"
+    agy_file.parent.mkdir(parents=True, exist_ok=True)
+    agy_file.write_text("rules\n", encoding="utf-8")
+
+    add_cmd.run(tmp_path, ".agy/ANTIGRAVITY.md")
+    hub_text = core.hub_path(tmp_path).read_text(encoding="utf-8")
+
+    assert "AUTHOR HERE" in hub_text
+    assert "canonical editable context hub" in hub_text
 
 
 # ---------------------------------------------------------------------------

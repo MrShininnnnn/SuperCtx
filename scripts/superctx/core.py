@@ -31,6 +31,58 @@ def manifest_path(project_dir: Path) -> Path:
     return ctx_dir(project_dir) / MANIFEST_NAME
 
 
+# --- generated policy text --------------------------------------------------
+
+def hub_policy_header(project_name: str) -> str:
+    """Render the canonical-editable-hub policy banner + shared-context section.
+
+    This is the top of a freshly generated hub. It must clearly tell agents that
+    this file is the place to author shared context.
+    """
+    return (
+        "# SuperCtx\n"
+        "<!-- SuperCtx: AUTHOR HERE\n\n"
+        "This is the canonical editable context hub for this repository.\n"
+        "Edit this file to update shared project instructions.\n"
+        "Generated tool files point here.\n"
+        "`/superctx:sync` preserves edits in this file.\n"
+        "-->\n\n"
+        f"# SUPERCTX — {project_name}\n\n"
+        "## Shared Project Context\n\n"
+        "Write repo-wide instructions here. This section is not tied to any one "
+        "assistant.\nIt is preserved by `/superctx:sync`.\n"
+    )
+
+
+def sources_readme_text() -> str:
+    """Render the backup-only README placed inside .ctx/sources/."""
+    return (
+        "# SuperCtx Backups\n\n"
+        "<!-- SuperCtx: BACKUP DIRECTORY - DO NOT EDIT LIVE CONTEXT HERE -->\n\n"
+        "This directory contains inactive backups of original pre-SuperCtx "
+        "instruction files.\n\n"
+        "Do not edit these files as live project context.\n"
+        "Edit `../SUPERCTX.md` instead.\n\n"
+        "These files are kept for recovery and audit only.\n"
+    )
+
+
+def ensure_sources_readme(project_dir: Path) -> bool:
+    """Write .ctx/sources/README.md if the sources dir exists and the README is absent.
+
+    Returns True if it wrote the README, False if it was already present or the
+    sources dir does not exist. Idempotent.
+    """
+    sdir = sources_dir(project_dir)
+    if not sdir.is_dir():
+        return False
+    readme = sdir / "README.md"
+    if readme.is_file():
+        return False
+    readme.write_text(sources_readme_text(), encoding="utf-8")
+    return True
+
+
 # --- content ----------------------------------------------------------------
 
 def normalize(text: str) -> str:

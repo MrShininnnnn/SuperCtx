@@ -51,6 +51,54 @@ def test_init_detects_and_scaffolds(tmp_path):
     assert (core.sources_dir(tmp_path) / "AGENTS.md").read_text() == "agents ctx\n"
 
 
+def test_init_hub_has_author_here_policy_header(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "claude ctx\n"})
+    init_cmd.run(tmp_path)
+
+    hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    # The hub must clearly say it is the canonical editable place to author context.
+    assert "AUTHOR HERE" in hub
+    assert "canonical editable context hub" in hub
+    assert "/superctx:sync" in hub
+
+
+def test_init_hub_has_shared_context_section_before_imports(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "claude ctx\n"})
+    init_cmd.run(tmp_path)
+
+    hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert "## Shared Project Context" in hub
+    # Shared section must come before imported tool content.
+    assert hub.index("## Shared Project Context") < hub.index("## From: CLAUDE.md")
+
+
+def test_init_creates_sources_readme(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "claude ctx\n"})
+    init_cmd.run(tmp_path)
+
+    readme = core.sources_dir(tmp_path) / "README.md"
+    assert readme.is_file()
+    text = readme.read_text(encoding="utf-8")
+    assert "backup" in text.lower()
+    assert "do not edit" in text.lower()
+    assert "../SUPERCTX.md" in text
+
+
+def test_init_hub_policy_is_idempotent(tmp_path):
+    # Running init then re-running on an already-managed repo must not duplicate
+    # policy scaffolding in the hub.
+    make_repo(tmp_path, {"CLAUDE.md": "claude ctx\n"})
+    init_cmd.run(tmp_path)
+    hub_after_first = core.hub_path(tmp_path).read_text(encoding="utf-8")
+
+    init_cmd.run(tmp_path)  # idempotent: .ctx/ already exists, makes no changes
+    hub_after_second = core.hub_path(tmp_path).read_text(encoding="utf-8")
+
+    assert hub_after_first == hub_after_second
+    assert hub_after_second.count("AUTHOR HERE") == 1
+    assert hub_after_second.count("## Shared Project Context") == 1
+
+
 def test_init_ignores_unrelated_files(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "x\n", "README.md": "not a tool file\n"})
     result = init_cmd.run(tmp_path)

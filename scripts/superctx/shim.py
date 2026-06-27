@@ -38,10 +38,13 @@ def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = Tru
     if not backup_required:
         backup_note = "Created by SuperCtx; no original content existed to back up."
 
+    redirect_line = "Generated shim — do not edit. Edit `.ctx/SUPERCTX.md` instead."
+
     if import_syntax == "claude-at-import":
         return (
             f"# SuperCtx\n"
             f"{WARNING_MARKER}\n\n"
+            f"{redirect_line}\n\n"
             f"@{rel_path_to_hub}\n\n"
             f"<!-- {backup_note}\n-->\n"
         )
@@ -52,6 +55,7 @@ def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = Tru
         return (
             f"# SuperCtx\n"
             f"{WARNING_MARKER}\n\n"
+            f"{redirect_line}\n\n"
             f"Use the shared project context in `{rel_path_to_hub}`.\n\n"
             f"{backup_line}\n"
         )

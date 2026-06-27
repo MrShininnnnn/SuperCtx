@@ -137,7 +137,8 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
         if hub_path.is_file():
             orig_hub_text = hub_path.read_text(encoding="utf-8")
         else:
-            orig_hub_text = f"# SUPERCTX — {manifest.get('project', {}).get('name', 'Project')}\n"
+            project_name = manifest.get("project", {}).get("name", "Project")
+            orig_hub_text = core.hub_policy_header(project_name)
 
         suffix = f"  ({', '.join(tools)})" if tools else ""
         section = f"\n## From: {rel_path_str}{suffix}\n\n{core.normalize(original_content).strip()}\n"

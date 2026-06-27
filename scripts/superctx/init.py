@@ -3,9 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from . import core, registry, shim
 
-_BANNER = (
-    "<!-- Canonical project context hub managed by SuperCtx. -->\n"
-)
 
 def run(project_dir: Path) -> dict:
     project_dir = Path(project_dir)
@@ -90,13 +87,15 @@ def run(project_dir: Path) -> dict:
         sections.append(f"## From: {rel}{suffix}\n\n{originals[rel].strip()}\n")
 
     name = manifest["project"]["name"]
+    header = core.hub_policy_header(name)
     body = "\n".join(sections) if sections else "_No tracked files found to centralize._\n"
-    hub_content = f"{_BANNER}\n# SUPERCTX — {name}\n\n{body}"
+    hub_content = f"{header}\n{body}"
     core.hub_path(project_dir).write_text(hub_content.rstrip() + "\n", encoding="utf-8")
 
-    # 3. Create .gitignore
+    # 3. Create .gitignore and the backup-only README
     gitignore_body = "# Inactive backup storage for original instruction files.\nsources/\n"
     (cdir / ".gitignore").write_text(gitignore_body, encoding="utf-8")
+    core.ensure_sources_readme(project_dir)
 
     # 4. Perform backups and replace registered files with shims
     connected = []
