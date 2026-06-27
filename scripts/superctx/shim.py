@@ -11,6 +11,14 @@ def is_shim(content: str) -> bool:
     normalized = content.replace("\r\n", "\n")
     return WARNING_MARKER in normalized and ".ctx/SUPERCTX.md" in normalized
 
+def has_current_policy(content: str) -> bool:
+    """True if a shim already carries the current edit-policy redirect wording.
+
+    Used by sync to detect valid-but-stale shims that should be refreshed.
+    """
+    return "do not edit. Edit `" in content.replace("\r\n", "\n")
+
+
 def is_shim_file(path: Path) -> bool:
     """Check if the file at path is a valid SuperCtx shim."""
     if not path.is_file():
@@ -38,7 +46,7 @@ def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = Tru
     if not backup_required:
         backup_note = "Created by SuperCtx; no original content existed to back up."
 
-    redirect_line = "Generated shim — do not edit. Edit `.ctx/SUPERCTX.md` instead."
+    redirect_line = f"Generated shim — do not edit. Edit `{rel_path_to_hub}` instead."
 
     if import_syntax == "claude-at-import":
         return (

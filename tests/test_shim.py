@@ -25,9 +25,13 @@ def test_shim_redirects_edits_to_hub():
     plain_shim = generate_shim("AGENTS.md", "plain-pointer")
     assert "Edit `.ctx/SUPERCTX.md` instead." in plain_shim
 
-    # Nested shims redirect using the same hub reference the agent can act on.
+    # Nested shims must redirect using a path relative to the shim's own location,
+    # matching the import target.
     nested_shim = generate_shim(".codex/AGENTS.md", "plain-pointer")
-    assert "Edit `.ctx/SUPERCTX.md` instead." in nested_shim
+    assert "Edit `../.ctx/SUPERCTX.md` instead." in nested_shim
+
+    nested_claude = generate_shim(".claude/CLAUDE.md", "claude-at-import")
+    assert "Edit `../.ctx/SUPERCTX.md` instead." in nested_claude
 
 def test_is_shim_accepts_legacy_marker():
     # Old shims written before the redirect wording must still be detected as shims,

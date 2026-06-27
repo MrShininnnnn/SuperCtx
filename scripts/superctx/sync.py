@@ -16,6 +16,41 @@ class SyncError(Exception):
     pass
 
 
+def _converge_policy(project_dir: Path, manifest: dict) -> bool:
+    """Non-destructively bring an existing managed repo up to the current edit policy.
+
+    Idempotently: writes .ctx/sources/README.md if missing, prepends the hub policy
+    header if absent (preserving user content), and refreshes valid shims that lack
+    the current redirect wording. Never rewrites the hub from tool files and never
+    touches backup file contents. Returns True if anything changed.
+    """
+    changed = False
+
+    if core.ensure_sources_readme(project_dir):
+        changed = True
+
+    hub_p = core.hub_path(project_dir)
+    if hub_p.is_file():
+        project_name = manifest.get("project", {}).get("name", project_dir.resolve().name)
+        new_hub, hub_changed = core.ensure_hub_policy(
+            hub_p.read_text(encoding="utf-8"), project_name
+        )
+        if hub_changed:
+            hub_p.write_text(new_hub, encoding="utf-8")
+            changed = True
+
+    for entry in manifest.get("files", []):
+        rel = entry["path"]
+        live = project_dir / rel
+        if live.is_file() and shim.is_shim_file(live):
+            if not shim.has_current_policy(live.read_text(encoding="utf-8")):
+                apply_res = shim.apply_shim(project_dir, rel, force_backup=False)
+                if apply_res.get("shimmed"):
+                    changed = True
+
+    return changed
+
+
 def run(project_dir: Path) -> dict:
     project_dir = Path(project_dir)
 
@@ -74,11 +109,12 @@ def run(project_dir: Path) -> dict:
         manifest = core.load_manifest(project_dir)
         healthy_shims = [entry["path"] for entry in manifest.get("files", [])]
         candidates = state_info.get("candidates", [])
+        converged = _converge_policy(project_dir, manifest)
         return {
             "mode": "healthy",
             "state": "managed_healthy",
             "final_state": "healthy",
-            "mutated": False,
+            "mutated": converged,
             "healthy": healthy_shims,
             "candidates": sorted(candidates),
             "message": "All SuperCtx context links are healthy."

@@ -54,6 +54,40 @@ def hub_policy_header(project_name: str) -> str:
     )
 
 
+_LEGACY_HUB_BANNER = "<!-- Canonical project context hub managed by SuperCtx. -->"
+
+
+def ensure_hub_policy(text: str, project_name: str) -> tuple[str, bool]:
+    """Prepend the canonical-editable-hub policy header to a hub that lacks it.
+
+    Idempotent: if the hub already carries the policy (the AUTHOR HERE marker),
+    returns (text, False) unchanged. Otherwise strips the legacy banner line and a
+    leading duplicate ``# SUPERCTX — <name>`` title, prepends the policy header, and
+    preserves all remaining user-authored content. Returns (new_text, True).
+    """
+    if "AUTHOR HERE" in text:
+        return text, False
+
+    body = text.replace("\r\n", "\n")
+    lines = body.split("\n")
+    # Drop the legacy banner line if present.
+    lines = [ln for ln in lines if ln.strip() != _LEGACY_HUB_BANNER]
+    # Drop a leading duplicate title; the policy header supplies its own.
+    title = f"# SUPERCTX — {project_name}"
+    pruned: list[str] = []
+    removed_title = False
+    for ln in lines:
+        if not removed_title and ln.strip() == title:
+            removed_title = True
+            continue
+        pruned.append(ln)
+    remaining = "\n".join(pruned).strip("\n")
+
+    header = hub_policy_header(project_name)
+    new_text = header if not remaining else f"{header}\n{remaining}\n"
+    return new_text, True
+
+
 def sources_readme_text() -> str:
     """Render the backup-only README placed inside .ctx/sources/."""
     return (
