@@ -44,7 +44,12 @@ def _converge_policy(project_dir: Path, manifest: dict) -> bool:
         live = project_dir / rel
         if live.is_file() and shim.is_shim_file(live):
             if not shim.has_current_policy(live.read_text(encoding="utf-8")):
-                apply_res = shim.apply_shim(project_dir, rel, force_backup=False)
+                apply_res = shim.apply_shim(
+                    project_dir,
+                    rel,
+                    force_backup=False,
+                    backup_required=entry.get("backup_required", True),
+                )
                 if apply_res.get("shimmed"):
                     changed = True
 
