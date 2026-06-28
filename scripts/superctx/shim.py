@@ -11,12 +11,24 @@ def is_shim(content: str) -> bool:
     normalized = content.replace("\r\n", "\n")
     return WARNING_MARKER in normalized and ".ctx/SUPERCTX.md" in normalized
 
-def has_current_policy(content: str) -> bool:
-    """True if a shim already carries the current edit-policy redirect wording.
+def _hub_ref(rel_path: str) -> str:
+    """Path to .ctx/SUPERCTX.md relative to the shim's own location."""
+    parent_dir = Path(rel_path).parent
+    return os.path.relpath(".ctx/SUPERCTX.md", parent_dir).replace("\\", "/")
 
-    Used by sync to detect valid-but-stale shims that should be refreshed.
+
+def _redirect_line(rel_path: str) -> str:
+    """The edit-policy redirect line for a shim at rel_path."""
+    return f"Generated shim — do not edit. Edit `{_hub_ref(rel_path)}` instead."
+
+
+def has_current_policy(content: str, rel_path: str) -> bool:
+    """True if a shim already carries the current edit-policy redirect for its path.
+
+    Used by sync to detect valid-but-stale shims that should be refreshed. Path-aware:
+    a nested shim carrying the wrong (e.g. root) redirect path is treated as stale.
     """
-    return "do not edit. Edit `" in content.replace("\r\n", "\n")
+    return _redirect_line(rel_path) in content.replace("\r\n", "\n")
 
 
 def is_shim_file(path: Path) -> bool:
@@ -37,7 +49,7 @@ def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = Tru
     parent_dir = Path(rel_path).parent
 
     # Compute relative paths using forward slashes for cross-platform consistency
-    rel_path_to_hub = os.path.relpath(".ctx/SUPERCTX.md", parent_dir).replace("\\", "/")
+    rel_path_to_hub = _hub_ref(rel_path)
     rel_path_to_backup = os.path.relpath(f".ctx/sources/{rel_path}", parent_dir).replace("\\", "/")
     backup_note = (
         "Original pre-SuperCtx content backed up at:\n"
@@ -46,7 +58,7 @@ def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = Tru
     if not backup_required:
         backup_note = "Created by SuperCtx; no original content existed to back up."
 
-    redirect_line = f"Generated shim — do not edit. Edit `{rel_path_to_hub}` instead."
+    redirect_line = _redirect_line(rel_path)
 
     if import_syntax == "claude-at-import":
         return (

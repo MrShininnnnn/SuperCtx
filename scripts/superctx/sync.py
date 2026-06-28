@@ -43,7 +43,7 @@ def _converge_policy(project_dir: Path, manifest: dict) -> bool:
         rel = entry["path"]
         live = project_dir / rel
         if live.is_file() and shim.is_shim_file(live):
-            if not shim.has_current_policy(live.read_text(encoding="utf-8")):
+            if not shim.has_current_policy(live.read_text(encoding="utf-8"), rel):
                 apply_res = shim.apply_shim(
                     project_dir,
                     rel,
@@ -150,7 +150,9 @@ def run(project_dir: Path) -> dict:
             if live.is_file() and shim.is_shim_file(live):
                 healthy.append(rel)
             else:
-                apply_res = shim.apply_shim(project_dir, rel, force_backup=False)
+                apply_res = shim.apply_shim(
+                    project_dir, rel, force_backup=False, backup_required=backup_required
+                )
                 if apply_res.get("shimmed"):
                     repaired.append(rel)
                 else:
@@ -159,13 +161,17 @@ def run(project_dir: Path) -> dict:
                         "reason": apply_res.get("reason", "unknown")
                     })
 
+        # Bring policy surfaces up to date in the same run (README, hub header,
+        # stale shim wording), conservatively and idempotently.
+        converged = _converge_policy(project_dir, manifest)
+
         final_state = "needs_attention" if unresolved else "healthy"
         msg = "SuperCtx shims repair complete with some unresolved issues." if unresolved else "SuperCtx shims repaired."
         return {
             "mode": "repair",
             "state": "managed_needs_repair",
             "final_state": final_state,
-            "mutated": len(repaired) > 0,
+            "mutated": len(repaired) > 0 or converged,
             "healthy": healthy,
             "repaired": repaired,
             "unresolved": unresolved,

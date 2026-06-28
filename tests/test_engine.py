@@ -217,7 +217,9 @@ def test_init_backup_collision_reports_failure(tmp_path):
 
 # --- sync -------------------------------------------------------------------
 
-def test_sync_never_modifies_hub(tmp_path):
+def test_sync_never_rebuilds_hub_from_tool_files(tmp_path):
+    # sync may converge policy scaffolding onto the hub, but must never rebuild
+    # the hub from shim/tool-file contents or destroy user-authored hub text.
     make_repo(tmp_path, {"CLAUDE.md": "a\n"})
     init_cmd.run(tmp_path)
 
@@ -228,10 +230,15 @@ def test_sync_never_modifies_hub(tmp_path):
     (tmp_path / "CLAUDE.md").write_text("corrupted content\n", encoding="utf-8")
 
     result = sync_cmd.run(tmp_path)
-
-    # Hub content must remain completely unchanged
-    assert hub_p.read_text(encoding="utf-8") == "custom user hub edits\n"
     assert result["mode"] == "repair"
+
+    hub_after = hub_p.read_text(encoding="utf-8")
+    # User-authored content is preserved.
+    assert "custom user hub edits" in hub_after
+    # Corrupted shim content never leaks into the hub.
+    assert "corrupted content" not in hub_after
+    # Policy scaffolding is converged (was missing on this hand-written hub).
+    assert hub_after.count("AUTHOR HERE") == 1
 
 
 def test_sync_healthy_shims_are_untouched(tmp_path):
@@ -429,6 +436,33 @@ def test_sync_converges_policy_on_old_managed_repo(tmp_path):
     assert shim.is_shim_file(tmp_path / "CLAUDE.md")
 
     # 4. Backup bytes are untouched.
+    assert (core.sources_dir(tmp_path) / "CLAUDE.md").read_text(encoding="utf-8") == "Claude rules\n"
+
+
+def test_sync_repair_path_also_converges_policy(tmp_path):
+    # Old managed repo whose registered shim is missing: one sync must both repair
+    # the shim and converge policy surfaces.
+    _make_old_managed_repo(tmp_path)
+    (tmp_path / "CLAUDE.md").unlink()  # missing shim → repair path
+
+    result = sync_cmd.run(tmp_path)
+    assert result["mode"] == "repair"
+    assert result["repaired"] == ["CLAUDE.md"]
+    assert result["mutated"] is True
+
+    # Shim repaired with current redirect wording.
+    shim_text = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+    assert shim.is_shim_file(tmp_path / "CLAUDE.md")
+    assert "Edit `.ctx/SUPERCTX.md` instead." in shim_text
+
+    # Policy surfaces converged in the same run.
+    assert (core.sources_dir(tmp_path) / "README.md").is_file()
+    hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert hub.count("AUTHOR HERE") == 1
+    assert "Claude rules" in hub
+    assert "Canonical project context hub managed by SuperCtx" not in hub
+
+    # Backup bytes untouched.
     assert (core.sources_dir(tmp_path) / "CLAUDE.md").read_text(encoding="utf-8") == "Claude rules\n"
 
 
