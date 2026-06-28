@@ -51,6 +51,84 @@ def test_init_detects_and_scaffolds(tmp_path):
     assert (core.sources_dir(tmp_path) / "AGENTS.md").read_text() == "agents ctx\n"
 
 
+def test_init_hub_has_author_here_policy_header(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "claude ctx\n"})
+    init_cmd.run(tmp_path)
+
+    hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    # The hub must clearly say it is the canonical editable place to author context.
+    assert "AUTHOR HERE" in hub
+    assert "canonical editable context hub" in hub
+    assert "/superctx:sync" in hub
+
+
+def test_init_hub_has_shared_context_section_before_imports(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "claude ctx\n"})
+    init_cmd.run(tmp_path)
+
+    hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert "## Shared Project Context" in hub
+    # Shared section must come before imported tool content.
+    assert hub.index("## Shared Project Context") < hub.index("## From: CLAUDE.md")
+
+
+def test_init_creates_sources_readme(tmp_path):
+    make_repo(tmp_path, {"CLAUDE.md": "claude ctx\n"})
+    init_cmd.run(tmp_path)
+
+    readme = core.sources_dir(tmp_path) / "README.md"
+    assert readme.is_file()
+    text = readme.read_text(encoding="utf-8")
+    assert "backup" in text.lower()
+    assert "do not edit" in text.lower()
+    assert "../SUPERCTX.md" in text
+
+
+def test_ensure_hub_policy_prepends_when_missing():
+    old_hub = (
+        "<!-- Canonical project context hub managed by SuperCtx. -->\n\n"
+        "# SUPERCTX — demo\n\n"
+        "## From: CLAUDE.md\n\nuser authored content\n"
+    )
+    new_text, changed = core.ensure_hub_policy(old_hub, "demo")
+
+    assert changed is True
+    assert "AUTHOR HERE" in new_text
+    assert "## Shared Project Context" in new_text
+    # User content is preserved.
+    assert "user authored content" in new_text
+    # The stale banner is removed; the title is not duplicated.
+    assert "Canonical project context hub managed by SuperCtx" not in new_text
+    assert new_text.count("# SUPERCTX — demo") == 1
+    # Policy comes before imported tool content.
+    assert new_text.index("## Shared Project Context") < new_text.index("## From: CLAUDE.md")
+
+
+def test_ensure_hub_policy_is_noop_when_present():
+    hub = core.hub_policy_header("demo") + "\n## From: CLAUDE.md\n\ncontent\n"
+    new_text, changed = core.ensure_hub_policy(hub, "demo")
+
+    assert changed is False
+    assert new_text == hub
+    assert new_text.count("AUTHOR HERE") == 1
+    assert new_text.count("## Shared Project Context") == 1
+
+
+def test_init_hub_policy_is_idempotent(tmp_path):
+    # Running init then re-running on an already-managed repo must not duplicate
+    # policy scaffolding in the hub.
+    make_repo(tmp_path, {"CLAUDE.md": "claude ctx\n"})
+    init_cmd.run(tmp_path)
+    hub_after_first = core.hub_path(tmp_path).read_text(encoding="utf-8")
+
+    init_cmd.run(tmp_path)  # idempotent: .ctx/ already exists, makes no changes
+    hub_after_second = core.hub_path(tmp_path).read_text(encoding="utf-8")
+
+    assert hub_after_first == hub_after_second
+    assert hub_after_second.count("AUTHOR HERE") == 1
+    assert hub_after_second.count("## Shared Project Context") == 1
+
+
 def test_init_ignores_unrelated_files(tmp_path):
     make_repo(tmp_path, {"CLAUDE.md": "x\n", "README.md": "not a tool file\n"})
     result = init_cmd.run(tmp_path)
@@ -139,7 +217,9 @@ def test_init_backup_collision_reports_failure(tmp_path):
 
 # --- sync -------------------------------------------------------------------
 
-def test_sync_never_modifies_hub(tmp_path):
+def test_sync_never_rebuilds_hub_from_tool_files(tmp_path):
+    # sync may converge policy scaffolding onto the hub, but must never rebuild
+    # the hub from shim/tool-file contents or destroy user-authored hub text.
     make_repo(tmp_path, {"CLAUDE.md": "a\n"})
     init_cmd.run(tmp_path)
 
@@ -150,10 +230,15 @@ def test_sync_never_modifies_hub(tmp_path):
     (tmp_path / "CLAUDE.md").write_text("corrupted content\n", encoding="utf-8")
 
     result = sync_cmd.run(tmp_path)
-
-    # Hub content must remain completely unchanged
-    assert hub_p.read_text(encoding="utf-8") == "custom user hub edits\n"
     assert result["mode"] == "repair"
+
+    hub_after = hub_p.read_text(encoding="utf-8")
+    # User-authored content is preserved.
+    assert "custom user hub edits" in hub_after
+    # Corrupted shim content never leaks into the hub.
+    assert "corrupted content" not in hub_after
+    # Policy scaffolding is converged (was missing on this hand-written hub).
+    assert hub_after.count("AUTHOR HERE") == 1
 
 
 def test_sync_healthy_shims_are_untouched(tmp_path):
@@ -285,15 +370,165 @@ def test_sync_empty_manifest_reports_no_registered_files(tmp_path):
 
     result = sync_cmd.run(tmp_path)
 
-    assert result == {
-        "mode": "healthy",
-        "state": "managed_healthy",
-        "final_state": "healthy",
-        "mutated": False,
-        "healthy": [],
-        "candidates": [],
-        "message": "All SuperCtx context links are healthy."
-    }
+    # An old-style hub is converged to the current policy (mutated), but the repo
+    # still reports healthy with no registered files.
+    assert result["mode"] == "healthy"
+    assert result["state"] == "managed_healthy"
+    assert result["final_state"] == "healthy"
+    assert result["healthy"] == []
+    assert result["candidates"] == []
+    assert result["message"] == "All SuperCtx context links are healthy."
+    assert "AUTHOR HERE" in core.hub_path(tmp_path).read_text(encoding="utf-8")
+
+    # Convergence is idempotent: a second run reports no further changes.
+    result2 = sync_cmd.run(tmp_path)
+    assert result2["mutated"] is False
+
+
+def _make_old_managed_repo(tmp_path: Path) -> None:
+    """Build a healthy managed repo as an OLD SuperCtx version would have left it:
+
+    old hub banner, an old-marker shim without redirect wording, a valid backup,
+    and no .ctx/sources/README.md.
+    """
+    cdir = core.ctx_dir(tmp_path)
+    (cdir / "sources").mkdir(parents=True, exist_ok=True)
+    (cdir / "sources" / "CLAUDE.md").write_text("Claude rules\n", encoding="utf-8")
+    core.hub_path(tmp_path).write_text(
+        "<!-- Canonical project context hub managed by SuperCtx. -->\n\n"
+        "# SUPERCTX — old\n\n"
+        "## From: CLAUDE.md\n\nClaude rules\n",
+        encoding="utf-8",
+    )
+    core.manifest_path(tmp_path).write_text(
+        '[project]\nname = "old"\nhub = ".ctx/SUPERCTX.md"\n\n'
+        '[[files]]\npath = "CLAUDE.md"\ntools = ["Claude Code"]\n',
+        encoding="utf-8",
+    )
+    # Old shim: valid (recognized by is_shim) but lacks the redirect wording.
+    (tmp_path / "CLAUDE.md").write_text(
+        "# SuperCtx\n<!-- Generated by SuperCtx [DO NOT EDIT] -->\n\n@.ctx/SUPERCTX.md\n",
+        encoding="utf-8",
+    )
+
+
+def test_sync_converges_policy_on_old_managed_repo(tmp_path):
+    _make_old_managed_repo(tmp_path)
+
+    result = sync_cmd.run(tmp_path)
+    assert result["state"] == "managed_healthy"
+
+    # 1. sources README is created.
+    readme = core.sources_dir(tmp_path) / "README.md"
+    assert readme.is_file()
+    assert "do not edit" in readme.read_text(encoding="utf-8").lower()
+
+    # 2. Hub gains the policy header exactly once, preserving user content.
+    hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert hub.count("AUTHOR HERE") == 1
+    assert hub.count("## Shared Project Context") == 1
+    assert "Claude rules" in hub
+    assert "Canonical project context hub managed by SuperCtx" not in hub
+
+    # 3. The stale shim gains the redirect wording.
+    shim_text = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Edit `.ctx/SUPERCTX.md` instead." in shim_text
+    assert shim.is_shim_file(tmp_path / "CLAUDE.md")
+
+    # 4. Backup bytes are untouched.
+    assert (core.sources_dir(tmp_path) / "CLAUDE.md").read_text(encoding="utf-8") == "Claude rules\n"
+
+
+def test_sync_repair_path_also_converges_policy(tmp_path):
+    # Old managed repo whose registered shim is missing: one sync must both repair
+    # the shim and converge policy surfaces.
+    _make_old_managed_repo(tmp_path)
+    (tmp_path / "CLAUDE.md").unlink()  # missing shim → repair path
+
+    result = sync_cmd.run(tmp_path)
+    assert result["mode"] == "repair"
+    assert result["repaired"] == ["CLAUDE.md"]
+    assert result["mutated"] is True
+
+    # Shim repaired with current redirect wording.
+    shim_text = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+    assert shim.is_shim_file(tmp_path / "CLAUDE.md")
+    assert "Edit `.ctx/SUPERCTX.md` instead." in shim_text
+
+    # Policy surfaces converged in the same run.
+    assert (core.sources_dir(tmp_path) / "README.md").is_file()
+    hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    assert hub.count("AUTHOR HERE") == 1
+    assert "Claude rules" in hub
+    assert "Canonical project context hub managed by SuperCtx" not in hub
+
+    # Backup bytes untouched.
+    assert (core.sources_dir(tmp_path) / "CLAUDE.md").read_text(encoding="utf-8") == "Claude rules\n"
+
+
+def test_sync_convergence_is_idempotent(tmp_path):
+    _make_old_managed_repo(tmp_path)
+
+    sync_cmd.run(tmp_path)
+    hub_once = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    shim_once = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+
+    sync_cmd.run(tmp_path)
+    hub_twice = core.hub_path(tmp_path).read_text(encoding="utf-8")
+    shim_twice = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+
+    assert hub_twice == hub_once
+    assert shim_twice == shim_once
+    assert hub_twice.count("AUTHOR HERE") == 1
+    assert hub_twice.count("## Shared Project Context") == 1
+
+
+def test_sync_refresh_preserves_backup_required_false(tmp_path):
+    # An old valid shim for a created-by-SuperCtx file (no original to back up)
+    # must keep its "no backup" wording when sync refreshes it.
+    cdir = core.ctx_dir(tmp_path)
+    cdir.mkdir(parents=True, exist_ok=True)
+    (cdir / "sources").mkdir(parents=True, exist_ok=True)
+    core.hub_path(tmp_path).write_text(core.hub_policy_header("demo"), encoding="utf-8")
+    core.manifest_path(tmp_path).write_text(
+        '[project]\nname = "demo"\nhub = ".ctx/SUPERCTX.md"\n\n'
+        '[[files]]\npath = "GEMINI.md"\ntools = ["Gemini CLI"]\nbackup_required = false\n',
+        encoding="utf-8",
+    )
+    # Old valid shim (recognized) but lacking the redirect wording.
+    (tmp_path / "GEMINI.md").write_text(
+        "# SuperCtx\n<!-- Generated by SuperCtx [DO NOT EDIT] -->\n\n"
+        "Use the shared project context in `.ctx/SUPERCTX.md`.\n",
+        encoding="utf-8",
+    )
+
+    sync_cmd.run(tmp_path)
+
+    shim_text = (tmp_path / "GEMINI.md").read_text(encoding="utf-8")
+    # Gains the redirect wording.
+    assert "Edit `.ctx/SUPERCTX.md` instead." in shim_text
+    # Still says no original content existed to back up.
+    assert "no original content existed to back up" in shim_text
+    # Does not falsely claim a backup file exists.
+    assert ".ctx/sources/GEMINI.md" not in shim_text
+    # No backup file is created.
+    assert not (core.sources_dir(tmp_path) / "GEMINI.md").exists()
+
+
+def test_sync_preserves_user_hub_content_on_converged_repo(tmp_path):
+    # A repo already on the new policy with extra user content must not be rewritten.
+    make_repo(tmp_path, {"CLAUDE.md": "a\n"})
+    init_cmd.run(tmp_path)
+    hub_p = core.hub_path(tmp_path)
+    hub_p.write_text(
+        hub_p.read_text(encoding="utf-8") + "\n## My Custom Section\n\nimportant notes\n",
+        encoding="utf-8",
+    )
+    hub_before = hub_p.read_text(encoding="utf-8")
+
+    sync_cmd.run(tmp_path)
+
+    assert hub_p.read_text(encoding="utf-8") == hub_before
 
 
 def test_sync_legacy_mode_is_not_available(tmp_path):

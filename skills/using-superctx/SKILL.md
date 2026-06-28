@@ -23,6 +23,16 @@ SuperCtx provides a central project-local context layer using a hub-and-shim mod
 - **Tool-specific instruction files** (e.g. `.claude/CLAUDE.md`, `.codex/AGENTS.md`) are generated shims/adapters pointing to the hub.
 - **`.ctx/sources/`** contains inactive recovery copies of original instruction files.
 
+## Edit Policy
+
+When updating shared project context, the agent edits `.ctx/SUPERCTX.md` directly. The other managed files are not authoring surfaces.
+
+| File | Policy |
+| --- | --- |
+| `.ctx/SUPERCTX.md` | Author here. Canonical editable hub. Edit it to update shared project context. `/superctx:sync` preserves these edits. |
+| Tool files (`.claude/CLAUDE.md`, `.codex/AGENTS.md`, `.agy/ANTIGRAVITY.md`, …) | Generated shims. Do not edit. Edit `.ctx/SUPERCTX.md` instead. |
+| `.ctx/sources/**` | Backup only. Do not read, import, or edit as active context. Not live context. |
+
 ## Agent Rules
 
 1. **Stay quiet about internals.** Do not explain hub/shim/backup mechanics unless the user asks. Use SuperCtx context naturally without announcing how it works.

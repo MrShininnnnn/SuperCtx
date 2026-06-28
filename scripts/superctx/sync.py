@@ -1,7 +1,8 @@
 """`superctx sync` — hub-preserving shim repair and recovery command.
 
 Verifies the integrity of registered shims, repairs missing or broken shims,
-and warns if original backups are missing. Never modifies .ctx/SUPERCTX.md.
+and warns if original backups are missing. Never rebuilds .ctx/SUPERCTX.md from
+tool files; may add missing edit-policy scaffolding while preserving user content.
 """
 
 from __future__ import annotations
@@ -14,6 +15,46 @@ from . import core, shim
 class SyncError(Exception):
     """Raised when sync/repair cannot be executed due to configuration or initialization issues."""
     pass
+
+
+def _converge_policy(project_dir: Path, manifest: dict) -> bool:
+    """Non-destructively bring an existing managed repo up to the current edit policy.
+
+    Idempotently: writes .ctx/sources/README.md if missing, prepends the hub policy
+    header if absent (preserving user content), and refreshes valid shims that lack
+    the current redirect wording. Never rewrites the hub from tool files and never
+    touches backup file contents. Returns True if anything changed.
+    """
+    changed = False
+
+    if core.ensure_sources_readme(project_dir):
+        changed = True
+
+    hub_p = core.hub_path(project_dir)
+    if hub_p.is_file():
+        project_name = manifest.get("project", {}).get("name", project_dir.resolve().name)
+        new_hub, hub_changed = core.ensure_hub_policy(
+            hub_p.read_text(encoding="utf-8"), project_name
+        )
+        if hub_changed:
+            hub_p.write_text(new_hub, encoding="utf-8")
+            changed = True
+
+    for entry in manifest.get("files", []):
+        rel = entry["path"]
+        live = project_dir / rel
+        if live.is_file() and shim.is_shim_file(live):
+            if not shim.has_current_policy(live.read_text(encoding="utf-8"), rel):
+                apply_res = shim.apply_shim(
+                    project_dir,
+                    rel,
+                    force_backup=False,
+                    backup_required=entry.get("backup_required", True),
+                )
+                if apply_res.get("shimmed"):
+                    changed = True
+
+    return changed
 
 
 def run(project_dir: Path) -> dict:
@@ -74,11 +115,12 @@ def run(project_dir: Path) -> dict:
         manifest = core.load_manifest(project_dir)
         healthy_shims = [entry["path"] for entry in manifest.get("files", [])]
         candidates = state_info.get("candidates", [])
+        converged = _converge_policy(project_dir, manifest)
         return {
             "mode": "healthy",
             "state": "managed_healthy",
             "final_state": "healthy",
-            "mutated": False,
+            "mutated": converged,
             "healthy": healthy_shims,
             "candidates": sorted(candidates),
             "message": "All SuperCtx context links are healthy."
@@ -109,7 +151,9 @@ def run(project_dir: Path) -> dict:
             if live.is_file() and shim.is_shim_file(live):
                 healthy.append(rel)
             else:
-                apply_res = shim.apply_shim(project_dir, rel, force_backup=False)
+                apply_res = shim.apply_shim(
+                    project_dir, rel, force_backup=False, backup_required=backup_required
+                )
                 if apply_res.get("shimmed"):
                     repaired.append(rel)
                 else:
@@ -118,13 +162,17 @@ def run(project_dir: Path) -> dict:
                         "reason": apply_res.get("reason", "unknown")
                     })
 
+        # Bring policy surfaces up to date in the same run (README, hub header,
+        # stale shim wording), conservatively and idempotently.
+        converged = _converge_policy(project_dir, manifest)
+
         final_state = "needs_attention" if unresolved else "healthy"
         msg = "SuperCtx shims repair complete with some unresolved issues." if unresolved else "SuperCtx shims repaired."
         return {
             "mode": "repair",
             "state": "managed_needs_repair",
             "final_state": final_state,
-            "mutated": len(repaired) > 0,
+            "mutated": len(repaired) > 0 or converged,
             "healthy": healthy,
             "repaired": repaired,
             "unresolved": unresolved,

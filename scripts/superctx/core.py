@@ -31,6 +31,92 @@ def manifest_path(project_dir: Path) -> Path:
     return ctx_dir(project_dir) / MANIFEST_NAME
 
 
+# --- generated policy text --------------------------------------------------
+
+def hub_policy_header(project_name: str) -> str:
+    """Render the canonical-editable-hub policy banner + shared-context section.
+
+    This is the top of a freshly generated hub. It must clearly tell agents that
+    this file is the place to author shared context.
+    """
+    return (
+        "# SuperCtx\n"
+        "<!-- SuperCtx: AUTHOR HERE\n\n"
+        "This is the canonical editable context hub for this repository.\n"
+        "Edit this file to update shared project instructions.\n"
+        "Generated tool files point here.\n"
+        "`/superctx:sync` preserves edits in this file.\n"
+        "-->\n\n"
+        f"# SUPERCTX — {project_name}\n\n"
+        "## Shared Project Context\n\n"
+        "Write repo-wide instructions here. This section is not tied to any one "
+        "assistant.\nIt is preserved by `/superctx:sync`.\n"
+    )
+
+
+_LEGACY_HUB_BANNER = "<!-- Canonical project context hub managed by SuperCtx. -->"
+
+
+def ensure_hub_policy(text: str, project_name: str) -> tuple[str, bool]:
+    """Prepend the canonical-editable-hub policy header to a hub that lacks it.
+
+    Idempotent: if the hub already carries the policy (the AUTHOR HERE marker),
+    returns (text, False) unchanged. Otherwise strips the legacy banner line and a
+    leading duplicate ``# SUPERCTX — <name>`` title, prepends the policy header, and
+    preserves all remaining user-authored content. Returns (new_text, True).
+    """
+    if "AUTHOR HERE" in text:
+        return text, False
+
+    body = text.replace("\r\n", "\n")
+    lines = body.split("\n")
+    # Drop the legacy banner line if present.
+    lines = [ln for ln in lines if ln.strip() != _LEGACY_HUB_BANNER]
+    # Drop a leading duplicate title; the policy header supplies its own.
+    title = f"# SUPERCTX — {project_name}"
+    pruned: list[str] = []
+    removed_title = False
+    for ln in lines:
+        if not removed_title and ln.strip() == title:
+            removed_title = True
+            continue
+        pruned.append(ln)
+    remaining = "\n".join(pruned).strip("\n")
+
+    header = hub_policy_header(project_name)
+    new_text = header if not remaining else f"{header}\n{remaining}\n"
+    return new_text, True
+
+
+def sources_readme_text() -> str:
+    """Render the backup-only README placed inside .ctx/sources/."""
+    return (
+        "# SuperCtx Backups\n\n"
+        "<!-- SuperCtx: BACKUP DIRECTORY - DO NOT EDIT LIVE CONTEXT HERE -->\n\n"
+        "This directory contains inactive backups of original pre-SuperCtx "
+        "instruction files.\n\n"
+        "Do not edit these files as live project context.\n"
+        "Edit `../SUPERCTX.md` instead.\n\n"
+        "These files are kept for recovery and audit only.\n"
+    )
+
+
+def ensure_sources_readme(project_dir: Path) -> bool:
+    """Write .ctx/sources/README.md if the sources dir exists and the README is absent.
+
+    Returns True if it wrote the README, False if it was already present or the
+    sources dir does not exist. Idempotent.
+    """
+    sdir = sources_dir(project_dir)
+    if not sdir.is_dir():
+        return False
+    readme = sdir / "README.md"
+    if readme.is_file():
+        return False
+    readme.write_text(sources_readme_text(), encoding="utf-8")
+    return True
+
+
 # --- content ----------------------------------------------------------------
 
 def normalize(text: str) -> str:
