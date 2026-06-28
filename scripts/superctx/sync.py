@@ -1,7 +1,8 @@
 """`superctx sync` — hub-preserving shim repair and recovery command.
 
 Verifies the integrity of registered shims, repairs missing or broken shims,
-and warns if original backups are missing. Never modifies .ctx/SUPERCTX.md.
+and warns if original backups are missing. Never rebuilds .ctx/SUPERCTX.md from
+tool files; may add missing edit-policy scaffolding while preserving user content.
 """
 
 from __future__ import annotations
