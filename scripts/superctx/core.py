@@ -10,7 +10,9 @@ from . import toml_compat
 CTX_DIRNAME = ".ctx"
 HUB_NAME = "SUPERCTX.md"
 SOURCES_DIRNAME = "sources"
-MANIFEST_NAME = "manifest.toml"
+MANIFEST_NAME = "manifest.toml"  # v1 manifest; the compatibility sentinel in v2
+V2_MANIFEST_NAME = "superctx.toml"
+V1_BACKUP_NAME = "manifest.v1.toml"
 
 
 # --- paths ------------------------------------------------------------------
@@ -29,6 +31,14 @@ def hub_path(project_dir: Path) -> Path:
 
 def manifest_path(project_dir: Path) -> Path:
     return ctx_dir(project_dir) / MANIFEST_NAME
+
+
+def v2_manifest_path(project_dir: Path) -> Path:
+    return ctx_dir(project_dir) / V2_MANIFEST_NAME
+
+
+def v1_backup_path(project_dir: Path) -> Path:
+    return ctx_dir(project_dir) / V1_BACKUP_NAME
 
 
 # --- generated policy text --------------------------------------------------
@@ -148,9 +158,17 @@ class SchemaError(ValueError):
 # --- manifest ---------------------------------------------------------------
 
 def load_manifest(project_dir: Path) -> dict:
-    with manifest_path(project_dir).open("rb") as fh:
-        data = toml_compat.load(fh)
+    """Load the workspace manifest as {project, files}, from the v2 manifest or a v1 one."""
+    from . import manifest
+    return manifest.load_view(project_dir)
 
+
+def load_v1_manifest(path: Path) -> dict:
+    with Path(path).open("rb") as fh:
+        return validate_v1(toml_compat.load(fh))
+
+
+def validate_v1(data) -> dict:
     if not isinstance(data, dict):
         raise SchemaError("Manifest root must be a table")
 

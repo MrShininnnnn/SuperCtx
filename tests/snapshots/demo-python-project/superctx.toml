@@ -1,0 +1,30 @@
+schema = 2
+
+[project]
+name = "demo-python-project"
+
+[[resources]]
+id = "instructions"
+type = "instructions"
+canonical = ".ctx/SUPERCTX.md"
+
+[[natives]]
+resource = "instructions"
+path = "CLAUDE.md"
+mode = "pointer"
+tools = ["Claude Code"]
+backup = true
+
+[[natives]]
+resource = "instructions"
+path = "AGENTS.md"
+mode = "pointer"
+tools = ["OpenAI Codex", "Cursor", "GitHub Copilot", "Windsurf", "Aider", "Zed", "Jules", "Devin", "Gemini CLI (opt-in)"]
+backup = true
+
+[[natives]]
+resource = "instructions"
+path = "GEMINI.md"
+mode = "pointer"
+tools = ["Gemini CLI"]
+backup = true

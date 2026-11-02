@@ -1,7 +1,7 @@
 """Migration-safety gate for v0.2: unpatched 0.1.x clients against v2 repositories.
 
 Each test builds a disposable repository, initializes it with the real released
-client, migrates it with the prototype, puts it into a healthy, conflicting,
+client, migrates it with the v2 migration, puts it into a healthy, conflicting,
 missing-file, or interrupted state, and then runs the released client's sync,
 add, and internal init paths against it. The whole workspace (contents, modes,
 symlink targets, and timestamps) must be unchanged afterwards.
@@ -19,8 +19,7 @@ from pathlib import Path
 
 import pytest
 
-import v2_migration_prototype as proto
-from superctx import core
+from superctx import core, manifest as manifest_mod, sync as sync_cmd
 
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_TAG = "v0.1.4"
@@ -153,7 +152,7 @@ def build_v1(project: Path, scripts: Path) -> Path:
 
 def build_v2(project: Path, scripts: Path) -> Path:
     build_v1(project, scripts)
-    assert proto.migrate(project) is True
+    assert manifest_mod.migrate(project) is True
     return project
 
 
@@ -184,7 +183,7 @@ V2_STATES = {
     "missing-shim": lambda p: (p / "AGENTS.md").unlink(),
     "missing-hub": lambda p: core.hub_path(p).unlink(),
     "missing-backup": lambda p: (core.sources_dir(p) / "CLAUDE.md").unlink(),
-    "missing-v2-manifest": lambda p: (core.ctx_dir(p) / proto.V2_MANIFEST_NAME).unlink(),
+    "missing-v2-manifest": lambda p: (core.ctx_dir(p) / core.V2_MANIFEST_NAME).unlink(),
     "missing-link-target": lambda p: (p / ".ctx/rules/python.md").unlink(),
 }
 
@@ -233,43 +232,46 @@ def test_legacy_internal_init_refuses_when_sentinel_is_deleted(tmp_path, legacy_
     assert snapshot(project) == before
 
 
-# --- migration prototype -----------------------------------------------------
+# --- migration ---------------------------------------------------------------
+
+def has_sentinel(path: Path) -> bool:
+    return manifest_mod._sentinel_state(path) in (manifest_mod.IN_PROGRESS, manifest_mod.COMPLETE)
+
 
 def test_migration_preserves_everything_but_manifests(tmp_path, legacy_scripts):
     project = build_v1(tmp_path / "repo", legacy_scripts)
     v1_text = core.manifest_path(project).read_text(encoding="utf-8")
     before = snapshot(project, times=False)
 
-    proto.migrate(project)
+    manifest_mod.migrate(project)
 
     after = snapshot(project, times=False)
     changed = {rel for rel in before.keys() | after.keys() if before.get(rel) != after.get(rel)}
     assert changed == {".ctx/manifest.toml", ".ctx/manifest.v1.toml", ".ctx/superctx.toml"}
-    assert (core.ctx_dir(project) / proto.V1_BACKUP_NAME).read_text(encoding="utf-8") == v1_text
-    assert proto.is_sentinel(core.manifest_path(project))
+    assert (core.ctx_dir(project) / core.V1_BACKUP_NAME).read_text(encoding="utf-8") == v1_text
+    assert has_sentinel(core.manifest_path(project))
 
 
 def test_v2_manifest_carries_every_v1_entry(tmp_path, legacy_scripts):
     project = build_v1(tmp_path / "repo", legacy_scripts)
     v1 = core.load_manifest(project)
 
-    proto.migrate(project)
+    manifest_mod.migrate(project)
 
-    v2 = proto._parse((core.ctx_dir(project) / proto.V2_MANIFEST_NAME).read_text(encoding="utf-8"))
+    v2 = manifest_mod._parse((core.ctx_dir(project) / core.V2_MANIFEST_NAME).read_text(encoding="utf-8"))
     assert v2["schema"] == 2
     assert v2["project"]["name"] == v1["project"]["name"]
-    assert v2["resources"] == [{
-        "id": "instructions", "type": "instructions",
-        "canonical": v1["project"]["hub"], "mode": "pointer",
-    }]
-    assert [(n["path"], n["tools"]) for n in v2["natives"]] == [(f["path"], f["tools"]) for f in v1["files"]]
+    assert v2["resources"] == [{"id": "instructions", "type": "instructions", "canonical": v1["project"]["hub"]}]
+    assert [(n["resource"], n["path"], n["mode"], n["tools"], n["backup"]) for n in v2["natives"]] == [
+        ("instructions", f["path"], "pointer", f["tools"], f.get("backup_required", True)) for f in v1["files"]
+    ]
 
 
 def test_migration_second_run_makes_no_changes(tmp_path, legacy_scripts):
     project = build_v2(tmp_path / "repo", legacy_scripts)
     before = snapshot(project)
 
-    assert proto.migrate(project) is False
+    assert manifest_mod.migrate(project) is False
     assert snapshot(project) == before
 
 
@@ -278,7 +280,7 @@ class Crash(Exception):
 
 
 # (replace call that crashes, whether the crash happens before or after it)
-CRASH_POINTS = [(n, when) for n in range(3) for when in ("before", "after")]
+CRASH_POINTS = [(n, when) for n in range(4) for when in ("before", "after")]
 
 
 @pytest.mark.parametrize("crash_at,when", CRASH_POINTS)
@@ -298,12 +300,12 @@ def test_interrupted_migration_is_safe_and_resumes(tmp_path, legacy_scripts, mon
             raise Crash(dst)
         os.replace(src, dst)
 
-    monkeypatch.setattr(proto, "_replace", crashing_replace)
+    monkeypatch.setattr(manifest_mod, "_replace", crashing_replace)
     with pytest.raises(Crash):
-        proto.migrate(project)
-    monkeypatch.setattr(proto, "_replace", os.replace)
+        manifest_mod.migrate(project)
+    monkeypatch.setattr(manifest_mod, "_replace", os.replace)
 
-    if proto.is_sentinel(core.manifest_path(project)):
+    if has_sentinel(core.manifest_path(project)):
         for op in ALL_OPS:
             before = snapshot(project)
             assert_refused(run_legacy(legacy_scripts, project, op), op)
@@ -314,12 +316,12 @@ def test_interrupted_migration_is_safe_and_resumes(tmp_path, legacy_scripts, mon
         assert result.returncode == 0, result.stdout + result.stderr
 
     # A crash after the last replace leaves nothing to resume.
-    assert proto.migrate(project) is not (crash_at == 2 and when == "after")
+    assert manifest_mod.migrate(project) is not (crash_at == 3 and when == "after")
     resumed = snapshot(project, times=False)
     assert resumed == expected, sorted(k for k in resumed.keys() | expected.keys() if resumed.get(k) != expected.get(k))
 
     before = snapshot(project)
-    assert proto.migrate(project) is False
+    assert manifest_mod.migrate(project) is False
     assert snapshot(project) == before
 
 
@@ -332,34 +334,76 @@ def test_resume_rereads_v1_manifest_changed_before_sentinel(tmp_path, legacy_scr
             raise Crash(dst)
         os.replace(src, dst)
 
-    monkeypatch.setattr(proto, "_replace", crash_on_sentinel)
+    monkeypatch.setattr(manifest_mod, "_replace", crash_on_sentinel)
     with pytest.raises(Crash):
-        proto.migrate(project)
-    monkeypatch.setattr(proto, "_replace", os.replace)
+        manifest_mod.migrate(project)
+    monkeypatch.setattr(manifest_mod, "_replace", os.replace)
 
     result = run_legacy(legacy_scripts, project, "add-untracked")
     assert result.returncode == 0, result.stdout + result.stderr
 
-    proto.migrate(project)
+    manifest_mod.migrate(project)
 
-    v2 = proto._parse((core.ctx_dir(project) / proto.V2_MANIFEST_NAME).read_text(encoding="utf-8"))
+    v2 = manifest_mod._parse((core.ctx_dir(project) / core.V2_MANIFEST_NAME).read_text(encoding="utf-8"))
     assert "GEMINI.md" in [n["path"] for n in v2["natives"]]
 
 
-@pytest.mark.parametrize("damage", ["no-v2-no-backup", "garbage-manifest", "no-manifest"])
+@pytest.mark.parametrize("damage", ["v2-lost-after-completion", "v2-and-v1-copy-lost", "garbage-manifest"])
 def test_migration_refuses_unrecoverable_states_without_writing(tmp_path, legacy_scripts, damage):
-    if damage == "no-v2-no-backup":
+    if damage.startswith("v2-"):
         project = build_v2(tmp_path / "repo", legacy_scripts)
-        (core.ctx_dir(project) / proto.V2_MANIFEST_NAME).unlink()
-        (core.ctx_dir(project) / proto.V1_BACKUP_NAME).unlink()
+        core.v2_manifest_path(project).unlink()
+        if damage == "v2-and-v1-copy-lost":
+            core.v1_backup_path(project).unlink()
     else:
         project = build_v1(tmp_path / "repo", legacy_scripts)
-        if damage == "garbage-manifest":
-            core.manifest_path(project).write_text("files = [[[\n", encoding="utf-8")
-        else:
-            core.manifest_path(project).unlink()
+        core.manifest_path(project).write_text("files = [[[\n", encoding="utf-8")
     before = snapshot(project)
 
-    with pytest.raises(proto.MigrationError):
-        proto.migrate(project)
+    with pytest.raises(manifest_mod.MigrationError):
+        manifest_mod.migrate(project)
     assert snapshot(project) == before
+
+
+def test_interrupted_upgrade_resumes_but_lost_v2_manifest_is_refused(tmp_path, legacy_scripts, monkeypatch):
+    """Both workspaces lack .ctx/superctx.toml and keep .ctx/manifest.v1.toml; only the interrupted one is rebuilt."""
+    (tmp_path / "interrupted").mkdir()
+    (tmp_path / "lost").mkdir()
+    interrupted = build_v1(tmp_path / "interrupted" / "repo", legacy_scripts)
+
+    def crash_on_v2_write(src, dst):
+        if Path(dst) == core.v2_manifest_path(interrupted):
+            raise Crash(dst)
+        os.replace(src, dst)
+
+    monkeypatch.setattr(manifest_mod, "_replace", crash_on_v2_write)
+    with pytest.raises(Crash):
+        manifest_mod.migrate(interrupted)
+    monkeypatch.setattr(manifest_mod, "_replace", os.replace)
+
+    lost = build_v2(tmp_path / "lost" / "repo", legacy_scripts)
+    # A v2-only resource the v1 copy knows nothing about, then the manifest is deleted.
+    doc = manifest_mod.load_v2(lost)
+    doc["resources"].append({"id": "review", "type": "skill", "canonical": ".ctx/skills/review"})
+    doc["natives"].append({"resource": "review", "path": ".claude/skills/review", "mode": "link", "tools": [], "backup": False})
+    manifest_mod.write(lost, doc)
+    core.v2_manifest_path(lost).unlink()
+
+    for project in (interrupted, lost):
+        assert not core.v2_manifest_path(project).exists()
+        assert core.v1_backup_path(project).is_file()
+    assert manifest_mod.locate(interrupted) == "interrupted"
+    assert manifest_mod.locate(lost) == "lost"
+
+    result = sync_cmd.run(interrupted)
+    assert result["migrated"] is True
+    assert result["final_state"] == "healthy"
+    assert manifest_mod.locate(interrupted) == "v2"
+    assert [n["path"] for n in manifest_mod.load_v2(interrupted)["natives"]] == ["CLAUDE.md", "AGENTS.md"]
+
+    before = snapshot(lost)
+    result = sync_cmd.run(lost)
+    assert result["mode"] == "inspect"
+    assert result["mutated"] is False
+    assert "restore it from version control" in result["message"]
+    assert snapshot(lost) == before

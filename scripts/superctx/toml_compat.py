@@ -5,7 +5,7 @@ SuperCtx skills execute the package directly from ``scripts/`` via
 dependencies, so falling back from stdlib ``tomllib`` to external ``tomli`` is
 not enough. The final fallback below intentionally supports only the small TOML
 subset SuperCtx writes and ships: tables, arrays of tables, strings, booleans,
-and arrays of strings.
+integers, and arrays of strings.
 """
 
 from __future__ import annotations
@@ -103,6 +103,7 @@ def _parse_value(value: str, line_no: int):
     except (SyntaxError, ValueError) as exc:
         raise ValueError(f"Unsupported TOML value on line {line_no}: {value}") from exc
 
-    if isinstance(parsed, (str, list)):
+    # bool is an int subclass, but Python's True/False are not TOML.
+    if isinstance(parsed, (str, list)) or (isinstance(parsed, int) and not isinstance(parsed, bool)):
         return parsed
     raise ValueError(f"Unsupported TOML value on line {line_no}: {value}")

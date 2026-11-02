@@ -83,6 +83,10 @@ def _cmd_sync(project_dir: Path) -> int:
     mode = result.get("mode")
     final_state = result.get("final_state", "needs_attention")
 
+    if result.get("migrated"):
+        print("Migrated the manifest to .ctx/superctx.toml (v1 copy kept at .ctx/manifest.v1.toml).")
+        print()
+
     if mode == "not_candidate":
         print("SuperCtx: No setup needed. No candidate instruction files found.")
         return 0

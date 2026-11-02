@@ -929,8 +929,9 @@ def test_add_validates_manifest_exists(tmp_path):
     res = add_cmd.run(tmp_path, "my_custom.md")
     assert res.status == "added"
 
-    # 2. With .ctx/ existing but manifest.toml deleted, add should raise AddError with inspect guidance
+    # 2. With .ctx/ existing but the manifest deleted, add should raise AddError with inspect guidance
     core.manifest_path(tmp_path).unlink()
+    core.v2_manifest_path(tmp_path).unlink()
     with pytest.raises(add_cmd.AddError) as exc_info:
         add_cmd.run(tmp_path, "my_custom.md")
     assert "manifest is missing or invalid" in str(exc_info.value)
@@ -1806,14 +1807,15 @@ def test_sync_cli_exit_codes(tmp_path):
     assert "All SuperCtx context links are healthy." in res3.stdout
 
     # 4. inspect -> exit 1 (manifest error)
-    core.manifest_path(tmp_path).write_text("invalid syntax = {broken", encoding="utf-8")
+    v2_text = core.v2_manifest_path(tmp_path).read_text(encoding="utf-8")
+    core.v2_manifest_path(tmp_path).write_text("invalid syntax = {broken", encoding="utf-8")
     res4 = subprocess.run([sys.executable, "-m", "superctx", "sync", str(tmp_path)], capture_output=True, text=True, env=env)
     assert res4.returncode == 1
     assert "configuration manifest is missing or invalid" in res4.stdout
 
     # 5. inspect -> exit 1 (corrupt hub error)
     # Restore manifest
-    core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.v2_manifest_path(tmp_path).write_text(v2_text, encoding="utf-8")
     # Write invalid UTF-8 bytes to SUPERCTX.md
     core.hub_path(tmp_path).write_bytes(b"\x80\xff\xfe")
     res5 = subprocess.run([sys.executable, "-m", "superctx", "sync", str(tmp_path)], capture_output=True, text=True, env=env)
@@ -1824,7 +1826,7 @@ def test_sync_cli_exit_codes(tmp_path):
 
     # 6. managed healthy repo + untracked candidate -> exit 0, lists candidate, no mutation, offers connect
     # Restore manifest and make healthy
-    core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.v2_manifest_path(tmp_path).write_text(v2_text, encoding="utf-8")
     core.hub_path(tmp_path).write_text("# Shared Context", encoding="utf-8")
     from superctx import shim
     shim_content = shim.generate_shim("CLAUDE.md", "claude-at-import")

@@ -16,7 +16,7 @@ from pathlib import Path
 import os
 import json
 
-from . import core, registry, shim
+from . import core, manifest as manifest_mod, registry, shim
 
 
 class StatusError(Exception):
@@ -123,9 +123,8 @@ def diagnostics(project_dir: Path, module_path: Path | None = None) -> dict:
 
 def run(project_dir: Path) -> list[dict]:
     project_dir = Path(project_dir)
-    manifest_path = core.manifest_path(project_dir)
 
-    if not manifest_path.is_file():
+    if manifest_mod.locate(project_dir) == "none":
         raise StatusError(
             "SuperCtx is not initialized in this project. "
             "Please offer to set up SuperCtx (with explicit consent) first."
@@ -227,16 +226,36 @@ def run(project_dir: Path) -> list[dict]:
 
 def detect_repo_state(project_dir: Path) -> dict:
     project_dir = Path(project_dir)
-    manifest_p = core.manifest_path(project_dir)
     ctx_dir = core.ctx_dir(project_dir)
 
     # 1. Managed Repo: `.ctx/` folder exists
     if ctx_dir.is_dir():
         reasons: list[str] = []
         is_legacy = False
+        manifest_kind = manifest_mod.locate(project_dir)
+
+        # A v2 manifest lost after migration, or conflicting manifest files, need a person.
+        if manifest_kind in ("lost", "conflict"):
+            return {
+                "state": "managed_needs_repair",
+                "candidates": [],
+                "reasons": ["manifest_lost" if manifest_kind == "lost" else "manifest_conflict"],
+                "recommended_action": "inspect",
+                "recommended_action_mutates_files": False
+            }
+        if manifest_kind == "interrupted":
+            return {
+                "state": "managed_needs_repair",
+                "candidates": [],
+                "reasons": ["migration_interrupted"],
+                "recommended_action": "migrate",
+                "recommended_action_mutates_files": True
+            }
+        if manifest_kind == "v2_unsealed":
+            reasons.append("sentinel_missing")
 
         # Check manifest existence
-        if not manifest_p.is_file():
+        if manifest_kind == "none":
             reasons.append("manifest_missing")
             candidates = []
             for entry in registry.instruction_conventions():

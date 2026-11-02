@@ -77,7 +77,8 @@ After `/superctx:sync`:
 ```text
 .ctx/
   SUPERCTX.md
-  manifest.toml
+  superctx.toml      # manifest
+  manifest.toml      # tells SuperCtx 0.1.x clients not to modify this repo
   sources/
     .claude/
       CLAUDE.md

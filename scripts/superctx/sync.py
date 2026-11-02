@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import core, shim
+from . import core, manifest as manifest_mod, shim
 
 
 class SyncError(Exception):
@@ -59,7 +59,44 @@ def _converge_policy(project_dir: Path, manifest: dict) -> bool:
 
 def run(project_dir: Path) -> dict:
     project_dir = Path(project_dir)
+    try:
+        migrated = _migrate(project_dir)
+    except manifest_mod.MigrationError as e:
+        return {
+            "mode": "inspect",
+            "state": "managed_needs_repair",
+            "final_state": "needs_attention",
+            "mutated": False,
+            "message": f"SuperCtx could not migrate the manifest: {e}"
+        }
+    result = _run(project_dir)
+    if migrated:
+        result["migrated"] = True
+        result["mutated"] = True
+    return result
 
+
+def _migrate(project_dir: Path) -> bool:
+    """Bring a v1, interrupted, or unsealed workspace to a sealed v2 manifest first.
+
+    Lost or conflicting manifests and unreadable or invalid manifest files are left
+    untouched for detect_repo_state to report. Raises MigrationError when a valid
+    v1 manifest cannot be migrated.
+    """
+    kind = manifest_mod.locate(project_dir)
+    if kind not in ("v1", "interrupted", "v2_unsealed"):
+        return False
+    try:
+        if kind == "v1":
+            core.load_v1_manifest(core.manifest_path(project_dir))
+        elif kind == "v2_unsealed":
+            manifest_mod.load_v2(project_dir)
+    except Exception:
+        return False
+    return manifest_mod.migrate(project_dir)
+
+
+def _run(project_dir: Path) -> dict:
     from . import status as status_module
     from . import init as init_cmd
 
@@ -99,7 +136,18 @@ def run(project_dir: Path) -> dict:
 
     elif state == "managed_needs_repair" and rec_action == "inspect":
         reasons = state_info.get("reasons", [])
-        if any(reason.startswith("hub_") for reason in reasons):
+        if "manifest_lost" in reasons:
+            msg = (
+                "SuperCtx is present, but .ctx/superctx.toml is missing from a migrated workspace. "
+                "It is not rebuilt from .ctx/manifest.v1.toml because that would drop v2-only resources; "
+                "restore it from version control."
+            )
+        elif "manifest_conflict" in reasons:
+            msg = (
+                "SuperCtx is present, but .ctx/manifest.toml is not a SuperCtx 0.2 sentinel "
+                "while .ctx/superctx.toml exists. Inspect both files."
+            )
+        elif any(reason.startswith("hub_") for reason in reasons):
             msg = "SuperCtx is present, but the configuration manifest or hub is missing or invalid."
         else:
             msg = "SuperCtx is present, but the configuration manifest is missing or invalid."
