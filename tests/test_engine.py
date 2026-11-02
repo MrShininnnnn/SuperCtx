@@ -1130,7 +1130,7 @@ def test_add_transactional_rollback(tmp_path, monkeypatch):
     live_file.write_text("some original content\n", encoding="utf-8")
 
     # Save original manifest and hub content
-    orig_manifest = core.manifest_path(tmp_path).read_text(encoding="utf-8")
+    orig_manifest = core.v2_manifest_path(tmp_path).read_text(encoding="utf-8")
     orig_hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
 
     # Mock apply_shim to raise an exception or fail
@@ -1144,7 +1144,7 @@ def test_add_transactional_rollback(tmp_path, monkeypatch):
     assert "Failed to apply shim: mocked failure" in str(exc_info.value)
 
     # Assert rollback
-    assert core.manifest_path(tmp_path).read_text(encoding="utf-8") == orig_manifest
+    assert core.v2_manifest_path(tmp_path).read_text(encoding="utf-8") == orig_manifest
     assert core.hub_path(tmp_path).read_text(encoding="utf-8") == orig_hub
 
     # Live file is untouched (not shimmed)
@@ -1161,7 +1161,7 @@ def test_add_transactional_rollback_restores_files_after_shim_write(tmp_path, mo
     live_file.write_text("some original content\n", encoding="utf-8")
     backup_file = core.sources_dir(tmp_path) / "somefile.md"
 
-    orig_manifest = core.manifest_path(tmp_path).read_text(encoding="utf-8")
+    orig_manifest = core.v2_manifest_path(tmp_path).read_text(encoding="utf-8")
     orig_hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
     original_apply_shim = shim.apply_shim
 
@@ -1175,7 +1175,7 @@ def test_add_transactional_rollback_restores_files_after_shim_write(tmp_path, mo
         add_cmd.run(tmp_path, "somefile.md")
     assert "failure after shim write" in str(exc_info.value)
 
-    assert core.manifest_path(tmp_path).read_text(encoding="utf-8") == orig_manifest
+    assert core.v2_manifest_path(tmp_path).read_text(encoding="utf-8") == orig_manifest
     assert core.hub_path(tmp_path).read_text(encoding="utf-8") == orig_hub
     assert live_file.read_text(encoding="utf-8") == "some original content\n"
     assert not backup_file.exists()
