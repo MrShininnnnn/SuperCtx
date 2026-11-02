@@ -85,21 +85,26 @@ def _is_within(path: Path, root: Path) -> bool:
 
 
 def _is_safe_target(project_dir: Path, rel_path: str) -> bool:
-    """True if the live file resolves inside the repository but outside .ctx/, and its
-    backup resolves inside .ctx/sources/. Resolving follows symlinks in every component,
-    so a symlinked file or parent directory cannot redirect a write.
+    """True if neither the live file nor its backup path passes through a symlink, the
+    live file is inside the repository but outside .ctx/, and the backup is inside
+    .ctx/sources/. A symlink anywhere in either path could redirect a write to .ctx/,
+    outside the repository, or to an unrelated file, so it is refused.
     """
     root = Path(project_dir).resolve()
+    live_path = root / rel_path
+    backup_path = core.sources_dir(root) / rel_path
     try:
-        live = (root / rel_path).resolve()
-        backup = (core.sources_dir(root) / rel_path).resolve()
+        live = live_path.resolve()
+        backup = backup_path.resolve()
     except (OSError, RuntimeError):
         # A symlink loop: RuntimeError before Python 3.13, OSError (ELOOP) since.
         return False
     return (
-        _is_within(live, root)
-        and not _is_within(live, core.ctx_dir(root).resolve())
-        and _is_within(backup, core.sources_dir(root).resolve())
+        live == live_path
+        and backup == backup_path
+        and _is_within(live, root)
+        and not _is_within(live, core.ctx_dir(root))
+        and _is_within(backup, core.sources_dir(root))
     )
 
 

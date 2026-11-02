@@ -392,6 +392,38 @@ def test_sync_reports_a_self_referential_pointer_symlink_without_crashing(tmp_pa
     assert snapshot(project) == before
 
 
+def test_sync_does_not_write_through_a_native_symlinked_to_another_repo_file(tmp_path):
+    project = v1_repo(tmp_path)
+    sync_cmd.run(project)
+    (project / "README.md").write_text("project readme\n", encoding="utf-8")
+    _track_pointer(project, "NOTES.md")
+    (project / "NOTES.md").symlink_to("README.md")
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": "NOTES.md", "reason": "unsafe_path"} in result["unresolved"]
+    assert (project / "README.md").read_text(encoding="utf-8") == "project readme\n"
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("target", [core.V2_MANIFEST_NAME, core.V1_BACKUP_NAME])
+def test_migration_refuses_before_writing_when_a_target_is_not_a_regular_file(tmp_path, target):
+    project = v1_repo(tmp_path)
+    (core.ctx_dir(project) / target).mkdir()
+    kind = manifest.locate(project)
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert result["mode"] == "inspect" and result["mutated"] is False
+    assert snapshot(project) == before
+    assert manifest.locate(project) == kind
+    with pytest.raises(manifest.MigrationError):
+        manifest.migrate(project)
+    assert snapshot(project) == before
+
+
 def test_sentinel_path_that_is_a_directory_is_a_conflict_not_a_crash(tmp_path):
     project = v1_repo(tmp_path)
     sync_cmd.run(project)

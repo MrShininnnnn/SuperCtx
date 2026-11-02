@@ -111,6 +111,7 @@ def run(project_dir: Path) -> dict:
     connected = []
     backups = []
     failed_shims = []
+    failed_reasons = {}
 
     for c in verified:
         rel = c["path"]
@@ -121,6 +122,7 @@ def run(project_dir: Path) -> dict:
                 backups.append(apply_res["backup_path"])
         else:
             failed_shims.append(rel)
+            failed_reasons[rel] = apply_res.get("reason", "unknown")
 
     ret = {
         "created": True,
@@ -135,5 +137,6 @@ def run(project_dir: Path) -> dict:
     if failed_shims:
         ret["partial_shim_failure"] = True
         ret["failed_shims"] = failed_shims
+        ret["failed_reasons"] = failed_reasons
 
     return ret

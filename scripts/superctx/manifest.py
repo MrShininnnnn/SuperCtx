@@ -94,7 +94,8 @@ def _sentinel_state(path: Path) -> str | None:
 
 def locate(project_dir: Path) -> str:
     """Classify the workspace's manifest files (see the state table in the ADR)."""
-    has_v2 = core.v2_manifest_path(project_dir).is_file()
+    # Anything at the v2 path (even a directory) counts, so it is never written over.
+    has_v2 = os.path.lexists(core.v2_manifest_path(project_dir))
     sentinel = _sentinel_state(core.manifest_path(project_dir))
 
     if has_v2:
@@ -349,6 +350,12 @@ def migrate(project_dir: Path) -> bool:
         raise MigrationError(
             ".ctx/superctx.toml exists but .ctx/manifest.toml is not a SuperCtx 0.2 sentinel; inspect both files."
         )
+
+    # Check every path this migration replaces before the first write, so a
+    # directory or symlink in the way cannot leave it half done.
+    for target in (backup_p, manifest_p, core.v2_manifest_path(project_dir)):
+        if os.path.lexists(target) and (target.is_symlink() or not target.is_file()):
+            raise MigrationError(f"{core.CTX_DIRNAME}/{target.name} is not a regular file; inspect it.")
 
     source_p = backup_p if kind == "interrupted" else manifest_p
     source = f"{core.CTX_DIRNAME}/{source_p.name}"
