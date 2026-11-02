@@ -14,6 +14,20 @@ def run(project_dir: Path) -> dict:
         for cand in discovery[key]:
             untracked.append(cand["path"])
 
+    links = core.symlinked_ctx_entries(project_dir)
+    if links:
+        return {
+            "created": False,
+            "reason": "unsafe_path",
+            "ctx_dir": str(cdir),
+            "partially_migrated": True,
+            "manifest_error": core.symlinked_ctx_message(links),
+            "connected": [],
+            "detected": [],
+            "hub": f"{core.CTX_DIRNAME}/{core.HUB_NAME}",
+            "untracked": untracked,
+        }
+
     if manifest_mod.locate(project_dir) != "none":
         manifest_error = None
         try:

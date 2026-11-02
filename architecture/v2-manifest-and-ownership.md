@@ -58,6 +58,8 @@ Mode is recorded per native path, not per resource: one skill may be linked into
 | Native deleted | sync recreates the pointer | sync recreates the link | sync republishes the copy |
 | Canonical deleted | **conflict**; never rebuilt from natives | **conflict** (dangling link); the link is left in place | **conflict**; the copy is left in place |
 
+SuperCtx never writes through a symlink it did not create. Commands refuse to write while `.ctx/` itself, the hub, `.ctx/sources/` or its README, `.ctx/.gitignore`, or a manifest file is a symlink. A native or backup path that resolves outside the repository, into `.ctx/`, or (for backups) outside `.ctx/sources/` is reported as `unsafe_path`.
+
 A conflict is reported and changes nothing: sync never overwrites a native with unexpected content and never rewrites a canonical resource from a native one. Generated pointer content is disposable; a native's original content is never discarded, because adoption backs it up first.
 
 ## Migration

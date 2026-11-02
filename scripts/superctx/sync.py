@@ -59,6 +59,15 @@ def _converge_policy(project_dir: Path, manifest: dict) -> bool:
 
 def run(project_dir: Path) -> dict:
     project_dir = Path(project_dir)
+    links = core.symlinked_ctx_entries(project_dir)
+    if links:
+        return {
+            "mode": "inspect",
+            "state": "managed_needs_repair",
+            "final_state": "needs_attention",
+            "mutated": False,
+            "message": core.symlinked_ctx_message(links)
+        }
     try:
         migrated = _migrate(project_dir)
     except manifest_mod.MigrationError as e:

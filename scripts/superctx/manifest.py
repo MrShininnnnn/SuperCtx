@@ -76,8 +76,11 @@ def _atomic_write(path: Path, text: str) -> None:
 
 def _sentinel_state(path: Path) -> str | None:
     """None if absent, IN_PROGRESS or COMPLETE for a sentinel, "other" for anything else."""
-    if not path.is_file():
+    if not os.path.lexists(path):
         return None
+    if not path.is_file():
+        # A directory or dangling symlink is not absent; never write over it.
+        return "other"
     try:
         data = _parse(path.read_text(encoding="utf-8"))
     except Exception:

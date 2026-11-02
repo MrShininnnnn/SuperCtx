@@ -41,6 +41,28 @@ def v1_backup_path(project_dir: Path) -> Path:
     return ctx_dir(project_dir) / V1_BACKUP_NAME
 
 
+def symlinked_ctx_entries(project_dir: Path) -> list[str]:
+    """SuperCtx-managed .ctx/ entries that are symlinks.
+
+    Writes to them would follow the link to wherever it points, possibly outside
+    the repository, so commands refuse to write while any exist.
+    """
+    project_dir = Path(project_dir)
+    cdir = ctx_dir(project_dir)
+    entries = [
+        cdir, hub_path(project_dir), sources_dir(project_dir), sources_dir(project_dir) / "README.md",
+        cdir / ".gitignore", manifest_path(project_dir), v2_manifest_path(project_dir), v1_backup_path(project_dir),
+    ]
+    return [p.relative_to(project_dir).as_posix() for p in entries if p.is_symlink()]
+
+
+def symlinked_ctx_message(links: list[str]) -> str:
+    return (
+        f"SuperCtx will not write through symlinks in .ctx/: {', '.join(links)}. "
+        "Replace them with regular files or directories."
+    )
+
+
 # --- generated policy text --------------------------------------------------
 
 def hub_policy_header(project_name: str) -> str:
