@@ -54,10 +54,16 @@ def _print_init_result(result: dict, project_dir: Path) -> None:
 
     failed_shims = result.get("failed_shims", [])
     if failed_shims:
-        print("WARNING: Some shims could not be applied due to pre-existing backups:")
+        reasons = result.get("failed_reasons", {})
+        print("WARNING: Some shims could not be applied:")
         for shim in failed_shims:
-            print(f"  ! {shim}")
-        print("To resolve, inspect the conflict between the backup files in .ctx/sources/ and your local versions.")
+            print(f"  ! {shim}: {reasons.get(shim, 'unknown')}")
+        explanations = {
+            "unsafe_path": "the file or its backup path goes through a symlink, so SuperCtx left it unchanged.",
+            "backup_exists_and_live_has_edits": "inspect the backup in .ctx/sources/ against your local version.",
+        }
+        for reason in sorted(set(reasons.values()) & explanations.keys()):
+            print(f"{reason}: {explanations[reason]}")
         print()
 
     untracked = result.get("untracked", [])
@@ -82,6 +88,10 @@ def _cmd_sync(project_dir: Path) -> int:
 
     mode = result.get("mode")
     final_state = result.get("final_state", "needs_attention")
+
+    if result.get("migrated"):
+        print("Migrated the manifest to .ctx/superctx.toml (v1 copy kept at .ctx/manifest.v1.toml).")
+        print()
 
     if mode == "not_candidate":
         print("SuperCtx: No setup needed. No candidate instruction files found.")

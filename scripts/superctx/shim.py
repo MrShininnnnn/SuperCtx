@@ -80,6 +80,34 @@ def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = Tru
             f"{backup_line}\n"
         )
 
+def _is_within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def _is_safe_target(project_dir: Path, rel_path: str) -> bool:
+    """True if neither the live file nor its backup path passes through a symlink, the
+    live file is inside the repository but outside .ctx/, and the backup is inside
+    .ctx/sources/. A symlink anywhere in either path could redirect a write to .ctx/,
+    outside the repository, or to an unrelated file, so it is refused.
+    """
+    root = Path(project_dir).resolve()
+    live_path = root / rel_path
+    backup_path = core.sources_dir(root) / rel_path
+    try:
+        live = live_path.resolve()
+        backup = backup_path.resolve()
+    except (OSError, RuntimeError):
+        # A symlink loop: RuntimeError before Python 3.13, OSError (ELOOP) since.
+        return False
+    return (
+        live == live_path
+        and backup == backup_path
+        and _is_within(live, root)
+        and not _is_within(live, core.ctx_dir(root))
+        and _is_within(backup, core.sources_dir(root))
+    )
+
+
 def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False, backup_required: bool = True) -> dict:
     """Apply the shim to a live file in project_dir.
 
@@ -93,6 +121,16 @@ def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False, bac
     project_dir = Path(project_dir)
     live_file = project_dir / rel_path
     backup_file = core.sources_dir(project_dir) / rel_path
+
+    if not _is_safe_target(project_dir, rel_path):
+        return {
+            "rel_path": rel_path,
+            "shimmed": False,
+            "reason": "unsafe_path",
+            "already_shim": False,
+            "backed_up": False,
+            "backup_path": None,
+        }
 
     # Determine import syntax from registry
     conv = registry.lookup_known_convention(rel_path)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from . import core, registry, shim
+from . import core, manifest as manifest_mod, registry, shim
 
 
 def run(project_dir: Path) -> dict:
@@ -14,7 +14,21 @@ def run(project_dir: Path) -> dict:
         for cand in discovery[key]:
             untracked.append(cand["path"])
 
-    if core.manifest_path(project_dir).is_file():
+    links = core.symlinked_ctx_entries(project_dir)
+    if links:
+        return {
+            "created": False,
+            "reason": "unsafe_path",
+            "ctx_dir": str(cdir),
+            "partially_migrated": True,
+            "manifest_error": core.symlinked_ctx_message(links),
+            "connected": [],
+            "detected": [],
+            "hub": f"{core.CTX_DIRNAME}/{core.HUB_NAME}",
+            "untracked": untracked,
+        }
+
+    if manifest_mod.locate(project_dir) != "none":
         manifest_error = None
         try:
             manifest = core.load_manifest(project_dir)
@@ -70,14 +84,10 @@ def run(project_dir: Path) -> dict:
     cdir.mkdir(parents=True, exist_ok=True)
     core.sources_dir(project_dir).mkdir(parents=True, exist_ok=True)
 
-    manifest = {
-        "project": {
-            "name": project_dir.resolve().name,
-            "hub": f"{core.CTX_DIRNAME}/{core.HUB_NAME}",
-        },
-        "files": [{"path": c["path"], "tools": c.get("tools", [])} for c in verified],
-    }
-    core.manifest_path(project_dir).write_text(core.dump_manifest(manifest), encoding="utf-8")
+    doc = manifest_mod.new_doc(project_dir.resolve().name)
+    doc["natives"] = [manifest_mod.instruction_native(c["path"], c.get("tools", [])) for c in verified]
+    manifest_mod.write(project_dir, doc)
+    manifest = manifest_mod.view(doc)
 
     sections = []
     for c in verified:
@@ -101,6 +111,7 @@ def run(project_dir: Path) -> dict:
     connected = []
     backups = []
     failed_shims = []
+    failed_reasons = {}
 
     for c in verified:
         rel = c["path"]
@@ -111,6 +122,7 @@ def run(project_dir: Path) -> dict:
                 backups.append(apply_res["backup_path"])
         else:
             failed_shims.append(rel)
+            failed_reasons[rel] = apply_res.get("reason", "unknown")
 
     ret = {
         "created": True,
@@ -125,5 +137,6 @@ def run(project_dir: Path) -> dict:
     if failed_shims:
         ret["partial_shim_failure"] = True
         ret["failed_shims"] = failed_shims
+        ret["failed_reasons"] = failed_reasons
 
     return ret

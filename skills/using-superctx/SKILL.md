@@ -39,7 +39,7 @@ When updating shared project context, the agent edits `.ctx/SUPERCTX.md` directl
 2. **Announce SuperCtx interactions.** When SuperCtx is relevant or actively shaping the work, announce in one short sentence before taking action:
    `Using SuperCtx to <purpose>.`
    Keep the announcement task-specific.
-3. **Do NOT ask users to manually edit `manifest.toml` or `SUPERCTX.md`, or manually run `/superctx:sync` or `/superctx:add` as the happy path unless they explicitly ask for commands.** Prefer agent action and internal command execution. If `/superctx:sync` reports setup, add, repair, or migration opportunities, offer the action in natural language and ask for consent.
+3. **Do NOT ask users to manually edit `.ctx/superctx.toml`, `.ctx/manifest.toml`, or `SUPERCTX.md`, or manually run `/superctx:sync` or `/superctx:add` as the happy path unless they explicitly ask for commands.** Prefer agent action and internal command execution. If `/superctx:sync` reports setup, add, repair, or migration opportunities, offer the action in natural language and ask for consent.
 4. **Avoid saying "sync context" unless actually running `/superctx:sync`.**
 5. **Do NOT read, import, or edit `.ctx/sources/**` as active context.** `.ctx/sources/` contains inactive recovery copies of original pre-SuperCtx files. These files are for recovery and audit only, not canonical editable context. When updating project context, edit `.ctx/SUPERCTX.md`.
 6. **Do NOT edit generated shims as the source of truth.** Tool-specific files are thin generated pointers to `.ctx/SUPERCTX.md`.

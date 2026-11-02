@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from superctx import core, init as init_cmd, status as status_cmd, sync as sync_cmd
+from superctx import core, init as init_cmd, manifest, status as status_cmd, sync as sync_cmd
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "examples" / "demo-python-project"
@@ -53,9 +53,10 @@ def test_demo_project_generates_expected_manifest_and_hub(tmp_path):
         "source": "CLAUDE.md",
         "state": "healthy",
     }
-    assert core.normalize(core.manifest_path(project).read_text(encoding="utf-8")) == (
-        core.normalize((SNAPSHOTS / "manifest.toml").read_text(encoding="utf-8"))
+    assert core.normalize(core.v2_manifest_path(project).read_text(encoding="utf-8")) == (
+        core.normalize((SNAPSHOTS / "superctx.toml").read_text(encoding="utf-8"))
     )
+    assert core.manifest_path(project).read_text(encoding="utf-8") == manifest.sentinel_text(manifest.COMPLETE)
     assert core.normalize(core.hub_path(project).read_text(encoding="utf-8")) == (
         core.normalize((SNAPSHOTS / "SUPERCTX.md").read_text(encoding="utf-8"))
     )

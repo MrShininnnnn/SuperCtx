@@ -199,20 +199,19 @@ def test_init_broken_shims(tmp_path):
     assert again["broken_shims"] == ["CLAUDE.md"]
 
 
-def test_init_backup_collision_reports_failure(tmp_path):
-    # Pre-create backup and a modified live file to trigger backup collision
+def test_init_refuses_when_a_backup_survives(tmp_path):
+    # A surviving backup means a workspace existed; init must not set up over it.
     make_repo(tmp_path, {
         "CLAUDE.md": "modified content\n",
         ".ctx/sources/CLAUDE.md": "original backup\n"
     })
     result = init_cmd.run(tmp_path)
-    assert result["created"] is True
-    assert result.get("partial_shim_failure") is True
-    assert result["failed_shims"] == ["CLAUDE.md"]
-    assert "CLAUDE.md" not in result["connected"]
+    assert result["created"] is False
 
-    # Verify live is NOT shimmed (original content preserved)
     assert (tmp_path / "CLAUDE.md").read_text() == "modified content\n"
+    assert (core.sources_dir(tmp_path) / "CLAUDE.md").read_text() == "original backup\n"
+    assert not core.hub_path(tmp_path).exists()
+    assert not core.v2_manifest_path(tmp_path).exists()
 
 
 # --- sync -------------------------------------------------------------------
@@ -929,8 +928,9 @@ def test_add_validates_manifest_exists(tmp_path):
     res = add_cmd.run(tmp_path, "my_custom.md")
     assert res.status == "added"
 
-    # 2. With .ctx/ existing but manifest.toml deleted, add should raise AddError with inspect guidance
+    # 2. With .ctx/ existing but the manifest deleted, add should raise AddError with inspect guidance
     core.manifest_path(tmp_path).unlink()
+    core.v2_manifest_path(tmp_path).unlink()
     with pytest.raises(add_cmd.AddError) as exc_info:
         add_cmd.run(tmp_path, "my_custom.md")
     assert "manifest is missing or invalid" in str(exc_info.value)
@@ -1130,7 +1130,7 @@ def test_add_transactional_rollback(tmp_path, monkeypatch):
     live_file.write_text("some original content\n", encoding="utf-8")
 
     # Save original manifest and hub content
-    orig_manifest = core.manifest_path(tmp_path).read_text(encoding="utf-8")
+    orig_manifest = core.v2_manifest_path(tmp_path).read_text(encoding="utf-8")
     orig_hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
 
     # Mock apply_shim to raise an exception or fail
@@ -1144,7 +1144,7 @@ def test_add_transactional_rollback(tmp_path, monkeypatch):
     assert "Failed to apply shim: mocked failure" in str(exc_info.value)
 
     # Assert rollback
-    assert core.manifest_path(tmp_path).read_text(encoding="utf-8") == orig_manifest
+    assert core.v2_manifest_path(tmp_path).read_text(encoding="utf-8") == orig_manifest
     assert core.hub_path(tmp_path).read_text(encoding="utf-8") == orig_hub
 
     # Live file is untouched (not shimmed)
@@ -1161,7 +1161,7 @@ def test_add_transactional_rollback_restores_files_after_shim_write(tmp_path, mo
     live_file.write_text("some original content\n", encoding="utf-8")
     backup_file = core.sources_dir(tmp_path) / "somefile.md"
 
-    orig_manifest = core.manifest_path(tmp_path).read_text(encoding="utf-8")
+    orig_manifest = core.v2_manifest_path(tmp_path).read_text(encoding="utf-8")
     orig_hub = core.hub_path(tmp_path).read_text(encoding="utf-8")
     original_apply_shim = shim.apply_shim
 
@@ -1175,7 +1175,7 @@ def test_add_transactional_rollback_restores_files_after_shim_write(tmp_path, mo
         add_cmd.run(tmp_path, "somefile.md")
     assert "failure after shim write" in str(exc_info.value)
 
-    assert core.manifest_path(tmp_path).read_text(encoding="utf-8") == orig_manifest
+    assert core.v2_manifest_path(tmp_path).read_text(encoding="utf-8") == orig_manifest
     assert core.hub_path(tmp_path).read_text(encoding="utf-8") == orig_hub
     assert live_file.read_text(encoding="utf-8") == "some original content\n"
     assert not backup_file.exists()
@@ -1806,14 +1806,15 @@ def test_sync_cli_exit_codes(tmp_path):
     assert "All SuperCtx context links are healthy." in res3.stdout
 
     # 4. inspect -> exit 1 (manifest error)
-    core.manifest_path(tmp_path).write_text("invalid syntax = {broken", encoding="utf-8")
+    v2_text = core.v2_manifest_path(tmp_path).read_text(encoding="utf-8")
+    core.v2_manifest_path(tmp_path).write_text("invalid syntax = {broken", encoding="utf-8")
     res4 = subprocess.run([sys.executable, "-m", "superctx", "sync", str(tmp_path)], capture_output=True, text=True, env=env)
     assert res4.returncode == 1
     assert "configuration manifest is missing or invalid" in res4.stdout
 
     # 5. inspect -> exit 1 (corrupt hub error)
     # Restore manifest
-    core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.v2_manifest_path(tmp_path).write_text(v2_text, encoding="utf-8")
     # Write invalid UTF-8 bytes to SUPERCTX.md
     core.hub_path(tmp_path).write_bytes(b"\x80\xff\xfe")
     res5 = subprocess.run([sys.executable, "-m", "superctx", "sync", str(tmp_path)], capture_output=True, text=True, env=env)
@@ -1824,7 +1825,7 @@ def test_sync_cli_exit_codes(tmp_path):
 
     # 6. managed healthy repo + untracked candidate -> exit 0, lists candidate, no mutation, offers connect
     # Restore manifest and make healthy
-    core.manifest_path(tmp_path).write_text('[[files]]\npath = "CLAUDE.md"\ntools = ["Claude"]\n', encoding="utf-8")
+    core.v2_manifest_path(tmp_path).write_text(v2_text, encoding="utf-8")
     core.hub_path(tmp_path).write_text("# Shared Context", encoding="utf-8")
     from superctx import shim
     shim_content = shim.generate_shim("CLAUDE.md", "claude-at-import")

@@ -10,7 +10,9 @@ from . import toml_compat
 CTX_DIRNAME = ".ctx"
 HUB_NAME = "SUPERCTX.md"
 SOURCES_DIRNAME = "sources"
-MANIFEST_NAME = "manifest.toml"
+MANIFEST_NAME = "manifest.toml"  # v1 manifest; the compatibility sentinel in v2
+V2_MANIFEST_NAME = "superctx.toml"
+V1_BACKUP_NAME = "manifest.v1.toml"
 
 
 # --- paths ------------------------------------------------------------------
@@ -29,6 +31,36 @@ def hub_path(project_dir: Path) -> Path:
 
 def manifest_path(project_dir: Path) -> Path:
     return ctx_dir(project_dir) / MANIFEST_NAME
+
+
+def v2_manifest_path(project_dir: Path) -> Path:
+    return ctx_dir(project_dir) / V2_MANIFEST_NAME
+
+
+def v1_backup_path(project_dir: Path) -> Path:
+    return ctx_dir(project_dir) / V1_BACKUP_NAME
+
+
+def symlinked_ctx_entries(project_dir: Path) -> list[str]:
+    """SuperCtx-managed .ctx/ entries that are symlinks.
+
+    Writes to them would follow the link to wherever it points, possibly outside
+    the repository, so commands refuse to write while any exist.
+    """
+    project_dir = Path(project_dir)
+    cdir = ctx_dir(project_dir)
+    entries = [
+        cdir, hub_path(project_dir), sources_dir(project_dir), sources_dir(project_dir) / "README.md",
+        cdir / ".gitignore", manifest_path(project_dir), v2_manifest_path(project_dir), v1_backup_path(project_dir),
+    ]
+    return [p.relative_to(project_dir).as_posix() for p in entries if p.is_symlink()]
+
+
+def symlinked_ctx_message(links: list[str]) -> str:
+    return (
+        f"SuperCtx will not write through symlinks in .ctx/: {', '.join(links)}. "
+        "Replace them with regular files or directories."
+    )
 
 
 # --- generated policy text --------------------------------------------------
@@ -148,9 +180,17 @@ class SchemaError(ValueError):
 # --- manifest ---------------------------------------------------------------
 
 def load_manifest(project_dir: Path) -> dict:
-    with manifest_path(project_dir).open("rb") as fh:
-        data = toml_compat.load(fh)
+    """Load the workspace manifest as {project, files}, from the v2 manifest or a v1 one."""
+    from . import manifest
+    return manifest.load_view(project_dir)
 
+
+def load_v1_manifest(path: Path) -> dict:
+    with Path(path).open("rb") as fh:
+        return validate_v1(toml_compat.load(fh))
+
+
+def validate_v1(data) -> dict:
     if not isinstance(data, dict):
         raise SchemaError("Manifest root must be a table")
 
@@ -181,8 +221,20 @@ def load_manifest(project_dir: Path) -> dict:
     return data
 
 
+_TOML_ESCAPES = {'"': '\\"', "\\": "\\\\", "\n": "\\n", "\t": "\\t", "\r": "\\r", "\b": "\\b", "\f": "\\f"}
+
+
 def _toml_str(value: str) -> str:
-    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    # Basic strings cannot hold raw control characters.
+    out = []
+    for ch in str(value):
+        if ch in _TOML_ESCAPES:
+            out.append(_TOML_ESCAPES[ch])
+        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+            out.append(f"\\u{ord(ch):04x}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
 
 
 def _toml_array(items) -> str:

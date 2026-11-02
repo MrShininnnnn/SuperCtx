@@ -41,6 +41,10 @@ EOF
       cat <<'EOF'
 SuperCtx is active, but the installation has broken or missing shims. Inspect the setup and offer to repair the shims. Once the user gives consent, run the repair internally (using `/superctx:sync`).
 EOF
+    elif [[ "$action" == "migrate" ]]; then
+      cat <<'EOF'
+SuperCtx is present, but an upgrade of its manifest to `.ctx/superctx.toml` was interrupted. Offer to resume it. Once the user gives consent, run it internally (using `/superctx:sync`).
+EOF
     else
       cat <<'EOF'
 SuperCtx is present, but the configuration manifest is missing or invalid. Explain the problem and offer to inspect the setup.

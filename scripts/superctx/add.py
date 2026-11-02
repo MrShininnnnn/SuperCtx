@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import core, registry, shim
+from . import core, manifest as manifest_mod, registry, shim
 
 
 class AddError(Exception):
@@ -21,7 +21,7 @@ class AddResult:
 
 def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> AddResult:
     project_dir = Path(project_dir).resolve()
-    manifest_path = core.manifest_path(project_dir)
+    manifest_path = core.v2_manifest_path(project_dir)
     hub_path = core.hub_path(project_dir)
 
     # 1. Require the global sync flow to bootstrap repositories.
@@ -31,7 +31,10 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
             "SuperCtx is not set up for this repository. "
             "Use superctx sync to set up/check/repair the shared context before adding a specific file."
         )
-    elif not manifest_path.exists():
+    links = core.symlinked_ctx_entries(project_dir)
+    if links:
+        raise AddError(core.symlinked_ctx_message(links))
+    if manifest_mod.locate(project_dir) in ("none", "orphaned"):
         raise AddError(
             "SuperCtx is present, but the configuration manifest is missing or invalid. "
             "Please inspect the setup."
@@ -60,12 +63,14 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
 
     # 3. Detect duplicate/tracked state
     try:
-        manifest = core.load_manifest(project_dir)
-    except core.SchemaError as e:
+        manifest_mod.migrate(project_dir)
+        doc = manifest_mod.load_v2(project_dir)
+    except (core.SchemaError, manifest_mod.MigrationError) as e:
         raise AddError(f"SuperCtx configuration manifest is invalid: {e}. Please inspect the setup.")
     except Exception as e:
         raise AddError(f"SuperCtx configuration manifest is unreadable: {e}. Please inspect the setup.")
-    tracked_files = manifest.setdefault("files", [])
+    manifest = manifest_mod.view(doc)
+    tracked_files = manifest["files"]
 
     for entry in tracked_files:
         if entry["path"] == rel_path_str:
@@ -119,16 +124,11 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
         note = "user-confirmed local convention; not verified official path"
 
     # 7. Prepare updated manifest
-    new_entry = {
-        "path": rel_path_str,
-        "tools": tools
-    }
-    if not file_exists:
-        new_entry["backup_required"] = False
-    if note:
-        new_entry["note"] = note
-    tracked_files.append(new_entry)
-    new_manifest_content = core.dump_manifest(manifest)
+    doc["natives"].append(manifest_mod.instruction_native(rel_path_str, tools, backup=file_exists, note=note))
+    try:
+        new_manifest_content = manifest_mod.dump(manifest_mod.validate(doc))
+    except core.SchemaError as e:
+        raise AddError(f"Cannot add {rel_path_str}: {e}")
 
     # 8. Prepare updated hub
     new_hub_content = None
