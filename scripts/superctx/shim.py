@@ -80,6 +80,25 @@ def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = Tru
             f"{backup_line}\n"
         )
 
+def _is_within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def _is_safe_target(project_dir: Path, rel_path: str) -> bool:
+    """True if the live file resolves inside the repository but outside .ctx/, and its
+    backup resolves inside .ctx/sources/. Resolving follows symlinks in every component,
+    so a symlinked file or parent directory cannot redirect a write.
+    """
+    root = Path(project_dir).resolve()
+    live = (root / rel_path).resolve()
+    backup = (core.sources_dir(root) / rel_path).resolve()
+    return (
+        _is_within(live, root)
+        and not _is_within(live, core.ctx_dir(root).resolve())
+        and _is_within(backup, core.sources_dir(root).resolve())
+    )
+
+
 def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False, backup_required: bool = True) -> dict:
     """Apply the shim to a live file in project_dir.
 
@@ -93,6 +112,16 @@ def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False, bac
     project_dir = Path(project_dir)
     live_file = project_dir / rel_path
     backup_file = core.sources_dir(project_dir) / rel_path
+
+    if not _is_safe_target(project_dir, rel_path):
+        return {
+            "rel_path": rel_path,
+            "shimmed": False,
+            "reason": "unsafe_path",
+            "already_shim": False,
+            "backed_up": False,
+            "backup_path": None,
+        }
 
     # Determine import syntax from registry
     conv = registry.lookup_known_convention(rel_path)

@@ -340,6 +340,62 @@ def test_sentinel_repair_does_not_follow_symlinked_temp_file(tmp_path):
     assert sentinel.read_text(encoding="utf-8") == manifest.sentinel_text(manifest.COMPLETE)
 
 
+def _track_pointer(project: Path, rel: str) -> None:
+    doc = manifest.load_v2(project)
+    doc["natives"].append(manifest.instruction_native(rel, [], backup=False))
+    manifest.write(project, doc)
+
+
+@pytest.mark.parametrize("case", ["parent-into-ctx", "parent-outside-repo", "file-into-ctx", "file-outside-repo"])
+def test_sync_does_not_repair_pointers_that_resolve_into_ctx_or_outside_the_repo(tmp_path, case):
+    project = v1_repo(tmp_path)
+    sync_cmd.run(project)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "SUPERCTX.md").write_text("unrelated\n", encoding="utf-8")
+    if case == "parent-into-ctx":
+        (project / "alias").symlink_to(".ctx")
+        rel = "alias/SUPERCTX.md"
+    elif case == "parent-outside-repo":
+        (project / "ext").symlink_to(outside)
+        rel = "ext/CLAUDE.md"
+    elif case == "file-into-ctx":
+        (project / "LINKED.md").symlink_to(".ctx/SUPERCTX.md")
+        rel = "LINKED.md"
+    else:
+        (project / "LINKED.md").symlink_to(outside / "SUPERCTX.md")
+        rel = "LINKED.md"
+    _track_pointer(project, rel)
+    hub = core.hub_path(project).read_text(encoding="utf-8")
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert result["final_state"] == "needs_attention"
+    assert {"path": rel, "reason": "unsafe_path"} in result["unresolved"]
+    assert core.hub_path(project).read_text(encoding="utf-8") == hub
+    assert sorted(p.name for p in outside.iterdir()) == ["SUPERCTX.md"]
+    assert (outside / "SUPERCTX.md").read_text(encoding="utf-8") == "unrelated\n"
+    assert snapshot(project) == before
+
+
+def test_shim_backup_does_not_follow_symlinked_sources_directory(tmp_path):
+    project = v1_repo(tmp_path)
+    sync_cmd.run(project)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (core.sources_dir(project) / "notes").symlink_to(outside)
+    (project / "notes").mkdir()
+    (project / "notes/AGENT.md").write_text("original\n", encoding="utf-8")
+    _track_pointer(project, "notes/AGENT.md")
+
+    res = shim.apply_shim(project, "notes/AGENT.md")
+
+    assert res["shimmed"] is False and res["reason"] == "unsafe_path"
+    assert list(outside.iterdir()) == []
+    assert (project / "notes/AGENT.md").read_text(encoding="utf-8") == "original\n"
+
+
 @pytest.mark.parametrize("damage", ["conflict", "lost", "unknown-key", "invalid-v1-entry"])
 def test_sync_refuses_unsafe_manifest_states_without_writing(tmp_path, damage):
     project = v1_repo(tmp_path)
