@@ -90,8 +90,12 @@ def _is_safe_target(project_dir: Path, rel_path: str) -> bool:
     so a symlinked file or parent directory cannot redirect a write.
     """
     root = Path(project_dir).resolve()
-    live = (root / rel_path).resolve()
-    backup = (core.sources_dir(root) / rel_path).resolve()
+    try:
+        live = (root / rel_path).resolve()
+        backup = (core.sources_dir(root) / rel_path).resolve()
+    except (OSError, RuntimeError):
+        # A symlink loop: RuntimeError before Python 3.13, OSError (ELOOP) since.
+        return False
     return (
         _is_within(live, root)
         and not _is_within(live, core.ctx_dir(root).resolve())

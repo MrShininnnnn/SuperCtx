@@ -379,6 +379,19 @@ def test_sync_does_not_repair_pointers_that_resolve_into_ctx_or_outside_the_repo
     assert snapshot(project) == before
 
 
+def test_sync_reports_a_self_referential_pointer_symlink_without_crashing(tmp_path):
+    project = v1_repo(tmp_path)
+    sync_cmd.run(project)
+    (project / "CLAUDE.md").unlink()
+    (project / "CLAUDE.md").symlink_to("CLAUDE.md")
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": "CLAUDE.md", "reason": "unsafe_path"} in result["unresolved"]
+    assert snapshot(project) == before
+
+
 def test_shim_backup_does_not_follow_symlinked_sources_directory(tmp_path):
     project = v1_repo(tmp_path)
     sync_cmd.run(project)
