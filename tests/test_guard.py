@@ -149,7 +149,7 @@ def test_pre_tool_use_managed_needs_repair_explains_consent_flow(tmp_path):
     assert "Proceed with repair?" in msg
 
 
-def test_pre_tool_use_managed_legacy_explains_consent_flow(tmp_path):
+def test_pre_tool_use_registered_file_with_content_asks_before_repair(tmp_path):
     from superctx.guard import handle_pre_tool_use
 
     ctx = tmp_path / ".ctx"
@@ -168,9 +168,8 @@ def test_pre_tool_use_managed_legacy_explains_consent_flow(tmp_path):
     })
 
     assert code == 2
-    assert "older legacy setup" in msg
-    assert "preserving your existing instruction contents" in msg
-    assert "Proceed with migration?" in msg
+    assert "need repair" in msg
+    assert "Proceed with repair?" in msg
 
 
 def test_pre_tool_use_not_candidate_explains_setup_mutations(tmp_path):

@@ -7,7 +7,7 @@ description: Use when the user wants to set up, check, repair, or report the Sup
 
 Converge this repository into the correct SuperCtx state. `/superctx:sync` is the global setup, check, repair, and report command.
 
-It checks the health of registered shims, initializes candidate repos, repairs missing or broken shims when safe, and reports healthy, repaired, unresolved, and warning states.
+It checks the health of registered shims and links, sets up candidate repos in one step, repairs missing shims and links when safe, and reports healthy, repaired, unresolved, left-in-place, and warning states. It never overwrites a shim someone edited.
 
 ## Before Running (Consent Boundary)
 
@@ -18,8 +18,9 @@ It checks the health of registered shims, initializes candidate repos, repairs m
    >
    > This will:
    > - create `.ctx/SUPERCTX.md`
-   > - back up the original instruction files under `.ctx/sources/`
+   > - back up the original instruction files, rules, and skills under `.ctx/sources/`
    > - replace the live instruction files with generated shims pointing to the hub
+   > - move supported rules and skills into `.ctx/` and leave a link at their original path, so tools keep using them
    >
    > Proceed?
 
@@ -36,6 +37,8 @@ PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/scripts" python3 -m superctx sync
 Present the output from the command:
 - On the **healthy** path (exit 0), confirm concisely that all shims are healthy:
   > All SuperCtx context links are healthy.
-- On **initialization** (exit 0), confirm the initialized files, hub location, and any backups.
-- On **repair** (exit 0), list the repaired shims.
+- On **initialization** (exit 0), confirm the connected instruction files, the linked rules and skills, the hub location, and any backups.
+- On **repair** (exit 0), list the repaired shims and links.
+- On **unresolved** items (exit 1), explain each reason. `native_edited` means someone wrote content into a generated shim: it was left in place, so offer to move that content into `.ctx/SUPERCTX.md` before restoring the shim. Link conflicts (`link_retargeted`, `native_replaced`, `canonical_missing`) were also left untouched; explain them and ask how to proceed.
+- For anything listed under **Left in place**, relay the reason. These are not errors: SuperCtx only adopts resources whose tool behavior it has verified.
 - On **legacy or inspection warning/stops** (exit 1), explain the warning and explain what needs to be inspected. Do not attempt automatic repair.

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import core, manifest as manifest_mod, registry, shim
+from . import adopt, core, manifest as manifest_mod, registry, shim
 
 
 class AddError(Exception):
@@ -39,6 +40,12 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
             "SuperCtx is present, but the configuration manifest is missing or invalid. "
             "Please inspect the setup."
         )
+
+    # Rules and skills are adopted as links (matched on the path as given, not resolved).
+    native = Path(input_path).as_posix().rstrip("/")
+    resource = next((c for c in registry.detect_resources(project_dir) if c["path"] == native), None)
+    if resource is not None:
+        return _add_resource(project_dir, resource)
 
     file_path = Path(input_path)
     resolved_file_path = (project_dir / file_path).resolve()
@@ -211,3 +218,42 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
         tools=tools,
         message=msg
     )
+
+
+def _add_resource(project_dir: Path, cand: dict) -> AddResult:
+    """Adopt one rule or skill: back it up, record it, then move it and link it."""
+    try:
+        manifest_mod.migrate(project_dir)
+        doc = manifest_mod.load_v2(project_dir)
+    except (core.SchemaError, manifest_mod.MigrationError) as e:
+        raise AddError(f"SuperCtx configuration manifest is invalid: {e}. Please inspect the setup.")
+    except Exception as e:
+        raise AddError(f"SuperCtx configuration manifest is unreadable: {e}. Please inspect the setup.")
+
+    if any(n["path"] == cand["path"] for n in doc["natives"]):
+        return AddResult(path=cand["path"], status="already_tracked", tools=cand["tools"],
+                         message=f"{cand['path']} is already tracked.")
+    adoptable, left = adopt.plan(project_dir, doc)
+    reason = next((item["reason"] for item in left if item["path"] == cand["path"]), None)
+    if reason is not None:
+        raise AddError(f"Cannot add {cand['path']}: {reason}")
+
+    backup_rel = adopt.backup(project_dir, cand["path"], project_dir)
+    resource, native = adopt.manifest_entries(cand)
+    doc["resources"].append(resource)
+    doc["natives"].append(native)
+    try:
+        manifest_mod.write(project_dir, doc)
+    except Exception as e:
+        # The backup did not exist before this call (plan checked), so it is ours to remove.
+        backup_path = project_dir / backup_rel
+        shutil.rmtree(backup_path) if backup_path.is_dir() else backup_path.unlink()
+        raise AddError(f"Failed to record {cand['path']}: {e}") from e
+
+    status, reason = adopt.publish_link(project_dir, cand["path"], cand["canonical"])
+    if status == "conflict":
+        msg = f"Recorded {cand['path']}, but could not link it ({reason}); sync will report it."
+    else:
+        msg = (f"Added {cand['path']}. Original backed up to {backup_rel}, moved to "
+               f"{cand['canonical']}, and linked back to its original path.")
+    return AddResult(path=cand["path"], status="added", tools=cand["tools"], message=msg)

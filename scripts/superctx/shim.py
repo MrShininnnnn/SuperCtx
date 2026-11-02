@@ -108,6 +108,35 @@ def _is_safe_target(project_dir: Path, rel_path: str) -> bool:
     )
 
 
+def publish_pointer(project_dir: Path, rel_path: str, backup_required: bool = True) -> dict:
+    """Write the pointer for an adopted native, never over content someone wrote.
+
+    Writes when the native is missing, or when it still holds exactly its backed-up
+    original (an adoption that was interrupted before the pointer was written).
+    Anything else at the path is left in place and reported: native_edited for a
+    file, native_replaced for a directory or other non-file.
+    """
+    project_dir = Path(project_dir)
+    live = project_dir / rel_path
+    backup = core.sources_dir(project_dir) / rel_path
+    if not _is_safe_target(project_dir, rel_path):
+        return {"rel_path": rel_path, "shimmed": False, "reason": "unsafe_path"}
+    if os.path.lexists(live) and not live.is_file():
+        return {"rel_path": rel_path, "shimmed": False, "reason": "native_replaced"}
+    if live.is_file():
+        content = live.read_bytes()
+        if is_shim(content.decode("utf-8", errors="replace")):
+            return {"rel_path": rel_path, "shimmed": True, "already_shim": True}
+        if not (backup.is_file() and backup.read_bytes() == content):
+            return {"rel_path": rel_path, "shimmed": False, "reason": "native_edited"}
+
+    conv = registry.lookup_known_convention(rel_path)
+    import_syntax = conv.get("import_syntax", "plain-pointer") if conv else "plain-pointer"
+    live.parent.mkdir(parents=True, exist_ok=True)
+    live.write_text(generate_shim(rel_path, import_syntax, backup_required=backup_required), encoding="utf-8")
+    return {"rel_path": rel_path, "shimmed": True, "already_shim": False}
+
+
 def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False, backup_required: bool = True) -> dict:
     """Apply the shim to a live file in project_dir.
 

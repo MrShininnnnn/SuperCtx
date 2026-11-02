@@ -308,7 +308,7 @@ def test_sync_broken_shim_with_existing_backup(tmp_path):
 
     assert result["healthy"] == []
     assert result["repaired"] == []
-    assert result["unresolved"] == [{"path": "CLAUDE.md", "reason": "backup_exists_and_live_has_edits"}]
+    assert result["unresolved"] == [{"path": "CLAUDE.md", "reason": "native_edited"}]
 
     # Overwritten non-shim text and backup must NOT be changed
     assert live_file.read_text(encoding="utf-8") == "user edits here\n"
@@ -1256,7 +1256,9 @@ def test_detect_repo_state_managed_needs_repair(tmp_path):
     assert res["recommended_action_mutates_files"] is True
 
 
-def test_detect_repo_state_managed_legacy(tmp_path):
+def test_detect_repo_state_registered_file_with_content_and_no_backup(tmp_path):
+    # Indistinguishable from a pointer someone edited when no backup exists: sync
+    # repair reports it as native_edited and leaves it in place.
     from superctx.status import detect_repo_state
     from superctx import core
     core.manifest_path(tmp_path).parent.mkdir(parents=True, exist_ok=True)
@@ -1266,10 +1268,9 @@ def test_detect_repo_state_managed_legacy(tmp_path):
     (tmp_path / "CLAUDE.md").write_text("full instructions text", encoding="utf-8")
 
     res = detect_repo_state(tmp_path)
-    assert res["state"] == "managed_legacy"
-    assert "unbacked_live_file" in res["reasons"]
-    assert res["recommended_action"] == "migrate"
-    assert res["recommended_action_mutates_files"] is True
+    assert res["state"] == "managed_needs_repair"
+    assert {"broken_shim", "missing_backup"} <= set(res["reasons"])
+    assert res["recommended_action"] == "repair"
 
 
 def test_detect_repo_state_is_read_only(tmp_path):
@@ -1533,7 +1534,7 @@ def test_sync_cli_agent_guided_output_paths(tmp_path, capsys):
     assert ".claude/CLAUDE.md" in output
     assert "/superctx:status" not in output
 
-    # 3. Legacy state stops with migration guidance.
+    # 3. A registered file holding content with no backup is reported, not overwritten.
     d_legacy = tmp_path / "legacy"
     d_legacy.mkdir()
     core.ctx_dir(d_legacy).mkdir()
@@ -1544,8 +1545,8 @@ def test_sync_cli_agent_guided_output_paths(tmp_path, capsys):
     exit_code = main(["sync", str(d_legacy)])
     output = capsys.readouterr().out
     assert exit_code == 1
-    assert "SuperCtx is present, but some instruction files are legacy" in output
-    assert "Offer to migrate/recover the legacy SuperCtx setup" in output
+    assert "CLAUDE.md: native_edited" in output
+    assert (d_legacy / "CLAUDE.md").read_text(encoding="utf-8") == "unbacked legacy contents"
     assert "/superctx:init" not in output
 
 

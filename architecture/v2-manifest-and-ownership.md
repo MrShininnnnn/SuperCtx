@@ -17,6 +17,7 @@ Released v0.1.x clients must not modify a v0.2 workspace. The migration-safety g
 | `.ctx/manifest.toml` | compatibility sentinel; never a v2 manifest |
 | `.ctx/manifest.v1.toml` | v1 manifest copied at migration, for recovery |
 | `.ctx/sources/<native path>` | original content of an adopted native path (inactive backup) |
+| `.ctx/rules/`, `.ctx/skills/` | canonical rules and skills, linked from their native paths (created only when one is adopted) |
 
 The sentinel is valid TOML whose `files` key is a string. Every 0.1.x loader requires an array there, raises `SchemaError`, and takes its no-write branch. Its `migration` key is `"in-progress"` or `"complete"`.
 
@@ -61,6 +62,31 @@ Mode is recorded per native path, not per resource: one skill may be linked into
 SuperCtx never writes through a symlink it did not create. Commands refuse to write while `.ctx/` itself, the hub, `.ctx/sources/` or its README, `.ctx/.gitignore`, or a manifest file is a symlink. A pointer native whose path or backup path passes through any symlink is reported as `unsafe_path` and left unchanged, because the link could redirect the write into `.ctx/`, outside the repository, or onto an unrelated file. Migration checks that every manifest path it replaces is absent or a regular file before its first write.
 
 A conflict is reported and changes nothing: sync never overwrites a native with unexpected content and never rewrites a canonical resource from a native one. Generated pointer content is disposable; a native's original content is never discarded, because adoption backs it up first.
+
+A pointer is rewritten only when it is missing, or when the file still holds exactly its backed-up original (an adoption interrupted before the pointer was written). Any other content at a pointer path stays where it is and is reported as `native_edited`, whether or not a backup exists.
+
+## Adoption
+
+SuperCtx adopts a resource when it can preserve how the tool uses it: an instruction file gets a pointer to the hub, and a rule or skill whose tool has been verified through a link (`publish = "link"` in `conventions.toml`) gets a relative symlink at its native path. Canonical paths keep the native path's depth (`.claude/skills/review` → `.ctx/skills/review`), so relative references inside a resource resolve to the same place through the link or the target. The verified tools and versions are listed in `architecture/compatibility.md`.
+
+Running `/superctx:sync` in a repository without `.ctx/` is the decision to set up shared context, and sync does it in one step:
+
+1. Discover instruction files, rules, and skills. Check each for conflicts.
+2. Build the new `.ctx/` (backups, hub, manifest, sentinel) in a staging directory inside the repository, then install it with one rename. A failure up to this point leaves the repository unchanged; a staging directory left by a crash is removed by the next run.
+3. Publish each native: write the pointer, or move the rule or skill to its canonical path and create the link.
+
+Every publish step can be repeated, so a sync after an interruption in step 3 finishes the job. A linked native is in one of these states:
+
+| State | Native path | Canonical path | Sync |
+|---|---|---|---|
+| healthy | symlink to the canonical path | present | — |
+| missing | absent | present | create the link |
+| pending | the original, not yet moved | absent | move it, then create the link |
+| `link_retargeted` | symlink elsewhere | any | report |
+| `native_replaced` | a real file or folder | present | report |
+| `canonical_missing` | absent or symlink | absent | report |
+
+In an existing workspace, newly discovered resources are listed as candidates and adopted with `/superctx:add <path>`. Resources that cannot be adopted stay where they are, and every sync reports why: `not_verified` (no verified link behavior for the tool), `already_a_symlink`, `contains_symlink` (a link inside a skill could break when it moves), `no_skill_md`, `name_collision` (two resources would share a name or canonical path), `canonical_exists`, `backup_exists`, or `unsafe_path`.
 
 ## Migration
 

@@ -5,6 +5,8 @@ Identity is by PATH convention (never inferred from file contents). See conventi
 
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -152,6 +154,69 @@ def detect_all(project_dir: Path) -> dict[str, list[dict]]:
         })
 
     return res
+
+
+RESOURCE_KINDS = {"rules": "rule", "skills": "skill"}
+
+
+def resource_conventions(convs: list[dict] | None = None) -> list[dict]:
+    """Rule and skill folder conventions (see conventions.toml)."""
+    convs = load_conventions() if convs is None else convs
+    return [c for c in convs if c.get("kind") in RESOURCE_KINDS]
+
+
+def _resource_id(type_: str, rel: str, suffixes: list[str]) -> str:
+    stem = next((rel[: -len(s)] for s in suffixes if rel.endswith(s)), rel)
+    slug = re.sub(r"[^a-z0-9._-]+", "-", stem.lower()).strip("-.")
+    return f"{type_}-{slug}"
+
+
+def detect_resources(project_dir: Path) -> list[dict]:
+    """Rules and skills found under known folders, each with its planned canonical path.
+
+    `reason` is None when the resource's form allows adoption, or explains why it
+    stays in place. Whether it is already tracked, collides, or has an unsafe path
+    is decided by the caller.
+    """
+    project_dir = Path(project_dir)
+    found = []
+    for conv in resource_conventions():
+        type_ = RESOURCE_KINDS[conv["kind"]]
+        base_rel = conv["path"].rstrip("/")
+        base = project_dir / base_rel
+        if not base.is_dir():
+            continue
+        suffixes = conv.get("suffixes", [])
+        if conv["kind"] == "rules":
+            # os.walk does not descend into symlinked directories; symlinked files
+            # are listed and reported as already_a_symlink.
+            items = []
+            for dirpath, dirnames, filenames in os.walk(base):
+                dirnames.sort()
+                items += [Path(dirpath) / n for n in sorted(filenames) if n.endswith(tuple(suffixes))]
+        else:
+            items = sorted(p for p in base.iterdir() if p.is_dir())
+        for item in items:
+            inner = item.relative_to(base).as_posix()
+            if item.is_symlink():
+                reason = "already_a_symlink"
+            elif type_ == "skill" and not (item / "SKILL.md").is_file():
+                reason = "no_skill_md"
+            elif type_ == "skill" and any(p.is_symlink() for p in item.rglob("*")):
+                reason = "contains_symlink"
+            elif conv.get("publish") != "link":
+                reason = "not_verified"
+            else:
+                reason = None
+            found.append({
+                "type": type_,
+                "path": f"{base_rel}/{inner}",
+                "canonical": f"{conv['canonical'].rstrip('/')}/{inner}",
+                "id": _resource_id(type_, inner, suffixes),
+                "tools": conv.get("tools", []),
+                "reason": reason,
+            })
+    return found
 
 
 def lookup_known_convention(path_str: str) -> dict | None:

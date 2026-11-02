@@ -287,9 +287,18 @@ def from_v1(v1: dict) -> dict:
 
 
 def view(doc: dict) -> dict:
-    """The {project, files} shape the shim engine works with: instruction pointers only."""
+    """The {project, files, links} shape the engine works with.
+
+    files: instruction pointers. links: linked natives with their canonical path.
+    """
+    canonicals = {r["id"]: r for r in doc.get("resources", [])}
     files = []
+    links = []
     for nat in doc.get("natives", []):
+        if nat["mode"] == "link":
+            res = canonicals[nat["resource"]]
+            links.append({"path": nat["path"], "canonical": res["canonical"], "type": res["type"]})
+            continue
         if nat["resource"] != INSTRUCTIONS_ID:
             continue
         entry = {"path": nat["path"], "tools": nat.get("tools", []), "backup_required": nat.get("backup", True)}
@@ -299,6 +308,7 @@ def view(doc: dict) -> dict:
     return {
         "project": {"name": doc.get("project", {}).get("name", ""), "hub": f"{core.CTX_DIRNAME}/{core.HUB_NAME}"},
         "files": files,
+        "links": links,
     }
 
 

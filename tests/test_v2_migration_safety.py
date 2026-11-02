@@ -407,3 +407,22 @@ def test_interrupted_upgrade_resumes_but_lost_v2_manifest_is_refused(tmp_path, l
     assert result["mutated"] is False
     assert "restore it from version control" in result["message"]
     assert snapshot(lost) == before
+
+
+@pytest.mark.parametrize("op", ALL_OPS)
+def test_legacy_client_refuses_a_workspace_set_up_with_linked_rules_and_skills(tmp_path, legacy_scripts, op):
+    project = tmp_path / "repo"
+    project.mkdir()
+    write(project, "CLAUDE.md", CLAUDE_ORIGINAL)
+    write(project, ".claude/rules/python.md", RULE_MD)
+    write(project, ".claude/skills/review/SKILL.md", SKILL_MD)
+    write(project, ".claude/skills/review/scripts/run.sh", RUN_SH, mode=0o755)
+    assert sync_cmd.run(project)["final_state"] == "healthy"
+    write(project, "GEMINI.md", GEMINI_UNTRACKED)  # untracked, for the add-untracked op
+    assert os.path.islink(project / ".claude/skills/review")
+    before = snapshot(project)
+
+    result = run_legacy(legacy_scripts, project, op)
+
+    assert_refused(result, op)
+    assert snapshot(project) == before

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import core, manifest as manifest_mod, shim
+from . import adopt, core, manifest as manifest_mod, shim
 
 
 class SyncError(Exception):
@@ -79,6 +79,9 @@ def run(project_dir: Path) -> dict:
             "message": f"SuperCtx could not migrate the manifest: {e}"
         }
     result = _run(project_dir)
+    if result["mode"] in ("healthy", "repair"):
+        # Report standing reasons for rules and skills that stay where they are.
+        result["left_in_place"] = adopt.plan(project_dir, manifest_mod.load_v2(project_dir))[1]
     if migrated:
         result["migrated"] = True
         result["mutated"] = True
@@ -170,7 +173,7 @@ def _run(project_dir: Path) -> dict:
 
     elif state == "managed_healthy":
         manifest = core.load_manifest(project_dir)
-        healthy_shims = [entry["path"] for entry in manifest.get("files", [])]
+        healthy_shims = [entry["path"] for entry in manifest.get("files", []) + manifest.get("links", [])]
         candidates = state_info.get("candidates", [])
         converged = _converge_policy(project_dir, manifest)
         return {
@@ -208,16 +211,20 @@ def _run(project_dir: Path) -> dict:
             if live.is_file() and shim.is_shim_file(live):
                 healthy.append(rel)
             else:
-                apply_res = shim.apply_shim(
-                    project_dir, rel, force_backup=False, backup_required=backup_required
-                )
-                if apply_res.get("shimmed"):
+                pub = shim.publish_pointer(project_dir, rel, backup_required=backup_required)
+                if pub["shimmed"]:
                     repaired.append(rel)
                 else:
-                    unresolved.append({
-                        "path": rel,
-                        "reason": apply_res.get("reason", "unknown")
-                    })
+                    unresolved.append({"path": rel, "reason": pub["reason"]})
+
+        for link in manifest.get("links", []):
+            status, reason = adopt.publish_link(project_dir, link["path"], link["canonical"])
+            if status == "healthy":
+                healthy.append(link["path"])
+            elif status == "repaired":
+                repaired.append(link["path"])
+            else:
+                unresolved.append({"path": link["path"], "reason": reason})
 
         # Bring policy surfaces up to date in the same run (README, hub header,
         # stale shim wording), conservatively and idempotently.

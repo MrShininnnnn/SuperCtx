@@ -33,7 +33,8 @@ def test_demo_project_generates_expected_manifest_and_hub(tmp_path):
         "mutated": False,
         "healthy": ["CLAUDE.md", "AGENTS.md", "GEMINI.md"],
         "candidates": [],
-        "message": "All SuperCtx context links are healthy."
+        "message": "All SuperCtx context links are healthy.",
+        "left_in_place": [],
     }
     # Assert status rows matches new schema
     assert next(r for r in status_rows if r["kind"] == "hub") == {
@@ -101,7 +102,7 @@ def test_generated_sources_are_ignored_inside_ctx(tmp_path):
 
     assert core.normalize(
         (core.ctx_dir(project) / ".gitignore").read_text(encoding="utf-8")
-    ) == "# Inactive backup storage for original instruction files.\nsources/\n"
+    ) == "# Inactive backup storage for original instruction files, rules, and skills.\nsources/\n"
     assert (core.sources_dir(project) / "CLAUDE.md").is_file()
     assert (core.sources_dir(project) / "AGENTS.md").is_file()
     assert (core.sources_dir(project) / "GEMINI.md").is_file()
