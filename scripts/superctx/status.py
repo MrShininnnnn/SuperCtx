@@ -166,7 +166,7 @@ def run(project_dir: Path) -> list[dict]:
                 "state": "missing_shim",
                 "import_syntax": import_syntax
             })
-        elif not shim.is_shim_file(live):
+        elif not shim.is_generated_pointer_file(project_dir, rel, backup_required):
             results.append({
                 "kind": "shim",
                 "path": rel,
@@ -353,20 +353,24 @@ def detect_repo_state(project_dir: Path) -> dict:
 
             if not live.is_file():
                 reasons.append("missing_shim")
-            elif not shim.is_shim_file(live):
+            elif not shim.is_generated_pointer_file(project_dir, rel, backup_required):
                 # Repair finishes an interrupted adoption or reports an edit; it
                 # never writes over content someone put there.
                 reasons.append("broken_shim")
+            elif not entry.get("published", True):
+                reasons.append("publication_pending")
 
             if backup_required and not backup.is_file():
                 reasons.append("missing_backup")
 
         for link in links:
-            link_state = adopt.link_state(project_dir, link["path"], link["canonical"])
+            link_state = adopt.link_state(project_dir, link["path"], link["canonical"], link["published"])
             if link_state in ("missing", "pending"):
                 reasons.append("missing_link")
             elif link_state != "healthy":
                 reasons.append("link_conflict")
+            elif not link["published"]:
+                reasons.append("publication_pending")
 
         # Include candidate files in reasons/candidates list
         discovery = registry.detect_all(project_dir)

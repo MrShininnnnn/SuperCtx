@@ -426,3 +426,16 @@ def test_legacy_client_refuses_a_workspace_set_up_with_linked_rules_and_skills(t
 
     assert_refused(result, op)
     assert snapshot(project) == before
+
+
+def test_pointers_written_by_the_released_client_stay_healthy_after_migration(tmp_path, legacy_scripts):
+    """v0.1.4 shims lack the current edit-policy line; they are SuperCtx's own output, not edits."""
+    project = build_v1(tmp_path / "repo", legacy_scripts)
+
+    result = sync_cmd.run(project)
+
+    assert result["final_state"] == "healthy", result
+    assert all(n.get("published", True) for n in manifest_mod.load_v2(project)["natives"])
+    for rel in ("CLAUDE.md", "AGENTS.md"):
+        assert "do not edit" in (project / rel).read_text(encoding="utf-8")
+    assert sync_cmd.run(project)["mutated"] is False

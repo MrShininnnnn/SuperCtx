@@ -40,6 +40,7 @@ path = "CLAUDE.md"             # repo-relative, outside .ctx/
 mode = "pointer"               # pointer | link | generated
 tools = ["Claude Code"]
 backup = true                  # original content is at .ctx/sources/<path>
+# published = false            # only while initial publication is pending (see Adoption)
 note = "..."                   # optional
 # published_hash = "sha256:<64 hex>"  # required for generated, forbidden otherwise
 ```
@@ -63,7 +64,7 @@ SuperCtx never writes through a symlink it did not create. Commands refuse to wr
 
 A conflict is reported and changes nothing: sync never overwrites a native with unexpected content and never rewrites a canonical resource from a native one. Generated pointer content is disposable; a native's original content is never discarded, because adoption backs it up first.
 
-A pointer is rewritten only when it is missing, or when the file still holds exactly its backed-up original (an adoption interrupted before the pointer was written). Any other content at a pointer path stays where it is and is reported as `native_edited`, whether or not a backup exists.
+A pointer counts as unedited only when it matches, byte for byte (line endings aside), a rendering SuperCtx produces for that path: the current one, or the v0.1.2–v0.1.4 one, which sync refreshes to the current wording. Searching for the generated marker is not enough, because a pointer with lines added keeps the marker. Sync rewrites a pointer only when it is missing, or, while its initial publication is pending, when the file still holds exactly its backed-up original. Any other content at a pointer path stays where it is and is reported as `native_edited`, whether or not a backup exists. That includes the original content restored on purpose after setup.
 
 ## Adoption
 
@@ -75,16 +76,16 @@ Running `/superctx:sync` in a repository without `.ctx/` is the decision to set 
 2. Build the new `.ctx/` (backups, hub, manifest, sentinel) in a staging directory inside the repository, then install it with one rename. A failure up to this point leaves the repository unchanged; a staging directory left by a crash is removed by the next run.
 3. Publish each native: write the pointer, or move the rule or skill to its canonical path and create the link.
 
-Every publish step can be repeated, so a sync after an interruption in step 3 finishes the job. A linked native is in one of these states:
+Setup and `add` record each new native with `published = false`, publish it, and then record it as published. Every publish step can be repeated, so a sync after an interruption finishes the job and records it. The flag is what lets sync tell finishing an adoption from inspecting something it already published: only an unpublished native may have its original bytes replaced by a pointer, or be moved into `.ctx/`. Natives migrated from v0.1.x are published. A linked native is in one of these states:
 
 | State | Native path | Canonical path | Sync |
 |---|---|---|---|
 | healthy | symlink to the canonical path | present | — |
 | missing | absent | present | create the link |
-| pending | the original, not yet moved | absent | move it, then create the link |
+| pending (unpublished only) | the original, not yet moved | absent | move it, then create the link |
 | `link_retargeted` | symlink elsewhere | any | report |
 | `native_replaced` | a real file or folder | present | report |
-| `canonical_missing` | absent or symlink | absent | report |
+| `canonical_missing` | absent, a symlink, or (once published) a real file or folder | absent | report |
 
 In an existing workspace, newly discovered resources are listed as candidates and adopted with `/superctx:add <path>`. Resources that cannot be adopted stay where they are, and every sync reports why: `not_verified` (no verified link behavior for the tool), `already_a_symlink`, `contains_symlink` (a link inside a skill could break when it moves), `no_skill_md`, `name_collision` (two resources would share a name or canonical path), `canonical_exists`, `backup_exists`, or `unsafe_path`.
 

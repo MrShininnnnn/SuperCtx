@@ -43,16 +43,13 @@ def _converge_policy(project_dir: Path, manifest: dict) -> bool:
     for entry in manifest.get("files", []):
         rel = entry["path"]
         live = project_dir / rel
-        if live.is_file() and shim.is_shim_file(live):
-            if not shim.has_current_policy(live.read_text(encoding="utf-8"), rel):
-                apply_res = shim.apply_shim(
-                    project_dir,
-                    rel,
-                    force_backup=False,
-                    backup_required=entry.get("backup_required", True),
-                )
-                if apply_res.get("shimmed"):
-                    changed = True
+        backup_required = entry.get("backup_required", True)
+        if shim.is_generated_pointer_file(project_dir, rel, backup_required):
+            current = shim.generated_pointers(rel, backup_required)[0]
+            if live.read_text(encoding="utf-8").replace("\r\n", "\n") != current:
+                # An older SuperCtx rendering; refresh it to the current wording.
+                live.write_text(current, encoding="utf-8")
+                changed = True
 
     return changed
 
@@ -208,23 +205,31 @@ def _run(project_dir: Path) -> dict:
             if backup_required and not backup.is_file():
                 warnings.append({"path": rel, "reason": "missing_backup"})
 
-            if live.is_file() and shim.is_shim_file(live):
+            pub = shim.publish_pointer(
+                project_dir, rel, backup_required=backup_required, published=entry.get("published", True)
+            )
+            if not pub["shimmed"]:
+                unresolved.append({"path": rel, "reason": pub["reason"]})
+            elif pub.get("already_shim"):
                 healthy.append(rel)
             else:
-                pub = shim.publish_pointer(project_dir, rel, backup_required=backup_required)
-                if pub["shimmed"]:
-                    repaired.append(rel)
-                else:
-                    unresolved.append({"path": rel, "reason": pub["reason"]})
+                repaired.append(rel)
 
         for link in manifest.get("links", []):
-            status, reason = adopt.publish_link(project_dir, link["path"], link["canonical"])
+            status, reason = adopt.publish_link(project_dir, link["path"], link["canonical"], link["published"])
             if status == "healthy":
                 healthy.append(link["path"])
             elif status == "repaired":
                 repaired.append(link["path"])
             else:
                 unresolved.append({"path": link["path"], "reason": reason})
+
+        # Natives whose first publication is now complete are only ever repaired from here on.
+        unpublished = {e["path"] for e in manifest.get("files", []) + manifest.get("links", [])
+                       if not e.get("published", True)}
+        newly_published = unpublished & (set(healthy) | set(repaired))
+        if newly_published:
+            manifest_mod.mark_published(project_dir, newly_published)
 
         # Bring policy surfaces up to date in the same run (README, hub header,
         # stale shim wording), conservatively and idempotently.
@@ -236,7 +241,7 @@ def _run(project_dir: Path) -> dict:
             "mode": "repair",
             "state": "managed_needs_repair",
             "final_state": final_state,
-            "mutated": len(repaired) > 0 or converged,
+            "mutated": len(repaired) > 0 or converged or bool(newly_published),
             "healthy": healthy,
             "repaired": repaired,
             "unresolved": unresolved,

@@ -141,6 +141,67 @@ def test_an_edited_pointer_created_without_a_backup_is_preserved(tmp_path):
     assert snapshot(project) == before
 
 
+def test_a_line_appended_to_a_pointer_is_preserved_and_reported(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    edited = (project / "CLAUDE.md").read_bytes() + b"extra\n"
+    (project / "CLAUDE.md").write_bytes(edited)
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert result["final_state"] == "needs_attention"
+    assert {"path": "CLAUDE.md", "reason": "native_edited"} in result["unresolved"]
+    assert (project / "CLAUDE.md").read_bytes() == edited
+    assert snapshot(project) == before
+
+
+def test_restoring_the_original_after_setup_is_preserved_and_reported(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    (project / "CLAUDE.md").write_text(CLAUDE, encoding="utf-8")  # equal to the backup
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": "CLAUDE.md", "reason": "native_edited"} in result["unresolved"]
+    assert (project / "CLAUDE.md").read_text(encoding="utf-8") == CLAUDE
+    assert snapshot(project) == before
+
+
+def test_a_handwritten_file_replacing_a_published_link_is_never_adopted(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    (project / ".ctx/rules/python.md").unlink()
+    (project / ".claude/rules/python.md").unlink()
+    write(project, ".claude/rules/python.md", "A handwritten replacement rule.\n")
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": ".claude/rules/python.md", "reason": "canonical_missing"} in result["unresolved"]
+    assert (project / ".claude/rules/python.md").read_text(encoding="utf-8") == "A handwritten replacement rule.\n"
+    assert not (project / ".ctx/rules/python.md").exists()
+    assert snapshot(project) == before
+
+
+def test_setup_records_publication_and_a_crash_before_recording_is_resumed(tmp_path, monkeypatch):
+    project = happy_repo(tmp_path)
+    monkeypatch.setattr(manifest, "mark_published", lambda *a, **k: (_ for _ in ()).throw(Crash()))
+    with pytest.raises(Crash):
+        init_cmd.run(project)
+    monkeypatch.undo()
+    assert {n["path"]: n.get("published", True) for n in manifest.load_v2(project)["natives"]} == {
+        "CLAUDE.md": False, ".claude/rules/python.md": False, ".claude/skills/review": False,
+    }
+
+    result = sync_cmd.run(project)
+
+    assert result["final_state"] == "healthy" and result["unresolved"] == []
+    assert all(n.get("published", True) for n in manifest.load_v2(project)["natives"])
+    assert sync_cmd.run(project)["mutated"] is False
+
+
 def test_a_missing_pointer_is_recreated(tmp_path):
     project = happy_repo(tmp_path)
     sync_cmd.run(project)
@@ -309,6 +370,7 @@ def test_sync_resumes_an_interrupted_setup(tmp_path, monkeypatch, stage):
 
     assert result["final_state"] == "healthy", result
     assert snapshot(project, times=False) == expected
+    assert all(n.get("published", True) for n in manifest.load_v2(project)["natives"])
 
 
 # --- add --------------------------------------------------------------------
@@ -337,3 +399,15 @@ def test_add_refuses_a_skill_whose_canonical_path_is_taken(tmp_path):
     with pytest.raises(add_cmd.AddError, match="canonical_exists"):
         add_cmd.run(project, ".claude/skills/deploy")
     assert snapshot(project) == before
+
+
+def test_add_backs_up_an_untracked_pointer_with_extra_lines_instead_of_overwriting(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    edited = shim.generated_pointers("GEMINI.md")[0] + "Gemini-only note.\n"
+    write(project, "GEMINI.md", edited)
+
+    add_cmd.run(project, "GEMINI.md")
+
+    assert (core.sources_dir(project) / "GEMINI.md").read_text(encoding="utf-8") == edited
+    assert "Gemini-only note." in core.hub_path(project).read_text(encoding="utf-8")

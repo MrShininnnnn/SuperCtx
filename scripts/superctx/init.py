@@ -56,7 +56,7 @@ def run(project_dir: Path) -> dict:
         broken_shims = []
         for entry in files:
             rel = entry["path"]
-            if not shim.is_shim_file(project_dir / rel):
+            if not shim.is_generated_pointer_file(project_dir, rel, entry.get("backup_required", True)):
                 broken_shims.append(rel)
 
         return {
@@ -93,7 +93,8 @@ def run(project_dir: Path) -> dict:
         core.ensure_sources_readme(staging)
 
         doc = manifest_mod.new_doc(project_dir.resolve().name)
-        doc["natives"] = [manifest_mod.instruction_native(c["path"], c.get("tools", [])) for c in pointers]
+        doc["natives"] = [manifest_mod.instruction_native(c["path"], c.get("tools", []), published=False)
+                          for c in pointers]
         for cand in resources:
             resource, native = adopt.manifest_entries(cand)
             doc["resources"].append(resource)
@@ -120,6 +121,7 @@ def run(project_dir: Path) -> dict:
 
     # 3. Publish each native. Every step can be repeated, so sync finishes an interrupted run.
     connected, linked, failed_reasons = _publish(project_dir, pointers, resources)
+    manifest_mod.mark_published(project_dir, set(connected) | set(linked))
 
     ret = {
         "created": True,
@@ -160,13 +162,13 @@ def _install_staged_ctx(staging: Path, project_dir: Path) -> None:
 def _publish(project_dir: Path, pointers: list[dict], resources: list[dict]) -> tuple[list, list, dict]:
     connected, linked, failed = [], [], {}
     for c in pointers:
-        res = shim.publish_pointer(project_dir, c["path"])
+        res = shim.publish_pointer(project_dir, c["path"], published=False)
         if res["shimmed"]:
             connected.append(c["path"])
         else:
             failed[c["path"]] = res["reason"]
     for cand in resources:
-        status, reason = adopt.publish_link(project_dir, cand["path"], cand["canonical"])
+        status, reason = adopt.publish_link(project_dir, cand["path"], cand["canonical"], published=False)
         if status == "conflict":
             failed[cand["path"]] = reason
         else:

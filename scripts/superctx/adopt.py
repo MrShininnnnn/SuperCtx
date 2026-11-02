@@ -71,7 +71,8 @@ def plan(project_dir: Path, doc: dict | None = None) -> tuple[list[dict], list[d
 def manifest_entries(cand: dict) -> tuple[dict, dict]:
     """The [[resources]] and [[natives]] entries for an adopted candidate."""
     resource = {"id": cand["id"], "type": cand["type"], "canonical": cand["canonical"]}
-    native = {"resource": cand["id"], "path": cand["path"], "mode": "link", "tools": list(cand["tools"]), "backup": True}
+    native = {"resource": cand["id"], "path": cand["path"], "mode": "link", "tools": list(cand["tools"]),
+              "backup": True, "published": False}  # until manifest.mark_published
     return resource, native
 
 
@@ -87,8 +88,13 @@ def backup(project_dir: Path, native: str, dest_root: Path) -> str:
     return f"{core.CTX_DIRNAME}/{core.SOURCES_DIRNAME}/{native}"
 
 
-def link_state(project_dir: Path, native: str, canonical: str) -> str:
-    """healthy, missing (link absent), pending (resource not moved yet), or a conflict reason."""
+def link_state(project_dir: Path, native: str, canonical: str, published: bool = True) -> str:
+    """healthy, missing (link absent), pending (resource not moved yet), or a conflict reason.
+
+    pending is only possible before the native's first publication is recorded. After
+    that, a real file or folder at the native path with no canonical copy is someone
+    else's content, never a resource to adopt, so it is canonical_missing.
+    """
     root = Path(project_dir).resolve()
     if not (_no_symlinked_parent(root, native) and _no_symlinked_parent(root, canonical)):
         return "unsafe_path"
@@ -101,17 +107,19 @@ def link_state(project_dir: Path, native: str, canonical: str) -> str:
             return "link_retargeted"
         return "healthy" if has_canonical else "canonical_missing"
     if os.path.lexists(nat):
-        return "native_replaced" if has_canonical else "pending"
+        if has_canonical:
+            return "native_replaced"
+        return "canonical_missing" if published else "pending"
     return "missing" if has_canonical else "canonical_missing"
 
 
-def publish_link(project_dir: Path, native: str, canonical: str) -> tuple[str, str | None]:
+def publish_link(project_dir: Path, native: str, canonical: str, published: bool = True) -> tuple[str, str | None]:
     """Bring one linked native to healthy. Returns (healthy|repaired, None) or (conflict, reason).
 
     Nothing is ever deleted or overwritten: a pending resource is moved (not copied),
     and any state but missing or pending is reported as a conflict.
     """
-    state = link_state(project_dir, native, canonical)
+    state = link_state(project_dir, native, canonical, published)
     if state == "healthy":
         return "healthy", None
     if state not in ("missing", "pending"):

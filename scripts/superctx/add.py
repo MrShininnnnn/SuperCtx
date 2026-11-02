@@ -103,7 +103,7 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
         is_live_shim = False
     else:
         live_content = resolved_file_path.read_text(encoding="utf-8")
-        is_live_shim = shim.is_shim(live_content)
+        is_live_shim = shim.is_any_generated_pointer(live_content, rel_path_str)
 
         if not is_live_shim and backup_file.is_file():
             raise AddError(
@@ -131,7 +131,8 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
         note = "user-confirmed local convention; not verified official path"
 
     # 7. Prepare updated manifest
-    doc["natives"].append(manifest_mod.instruction_native(rel_path_str, tools, backup=file_exists, note=note))
+    doc["natives"].append(manifest_mod.instruction_native(rel_path_str, tools, backup=file_exists, note=note,
+                                                          published=False))
     try:
         new_manifest_content = manifest_mod.dump(manifest_mod.validate(doc))
     except core.SchemaError as e:
@@ -199,6 +200,8 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
             raise e
         raise AddError(str(e)) from e
 
+    manifest_mod.mark_published(project_dir, {rel_path_str})
+
     if not file_exists:
         msg = (
             f"Created {rel_path_str} as a generated shim pointing to "
@@ -250,10 +253,11 @@ def _add_resource(project_dir: Path, cand: dict) -> AddResult:
         shutil.rmtree(backup_path) if backup_path.is_dir() else backup_path.unlink()
         raise AddError(f"Failed to record {cand['path']}: {e}") from e
 
-    status, reason = adopt.publish_link(project_dir, cand["path"], cand["canonical"])
+    status, reason = adopt.publish_link(project_dir, cand["path"], cand["canonical"], published=False)
     if status == "conflict":
         msg = f"Recorded {cand['path']}, but could not link it ({reason}); sync will report it."
     else:
+        manifest_mod.mark_published(project_dir, {cand["path"]})
         msg = (f"Added {cand['path']}. Original backed up to {backup_rel}, moved to "
                f"{cand['canonical']}, and linked back to its original path.")
     return AddResult(path=cand["path"], status="added", tools=cand["tools"], message=msg)

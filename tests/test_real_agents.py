@@ -68,6 +68,7 @@ def adopted_repo(tmp_path_factory) -> Path:
 
 
 def ask_claude(root: Path, prompt: str, tools: str) -> str:
+    """Run Claude Code and return its final answer; fail unless the run succeeded."""
     proc = subprocess.run(
         ["claude", "-p", prompt, "--model", "haiku", "--setting-sources", "project",
          "--output-format", "stream-json", "--verbose", "--allowedTools", tools,
@@ -80,6 +81,9 @@ def ask_claude(root: Path, prompt: str, tools: str) -> str:
         except ValueError:
             continue
         if event.get("type") == "result":
+            if proc.returncode != 0 or event.get("is_error") or event.get("subtype") != "success":
+                pytest.fail(f"claude run failed (exit {proc.returncode}, {event.get('subtype')}): "
+                            f"{event.get('result', '')[:400]}")
             return event.get("result", "")
     pytest.fail(f"claude produced no result (exit {proc.returncode}): {proc.stderr[-400:]}")
 
@@ -94,4 +98,6 @@ def test_linked_scoped_rule_applies_to_a_matching_file(adopted_repo):
 
 
 def test_linked_scoped_rule_stays_inactive_for_a_non_matching_file(adopted_repo):
-    assert "RULE-PY-5521" not in ask_claude(adopted_repo, RULE_PROMPT.format(f="docs/notes.md"), "Read")
+    # Require the requested answer, not merely the codeword's absence.
+    answer = ask_claude(adopted_repo, RULE_PROMPT.format(f="docs/notes.md"), "Read")
+    assert answer.strip().strip(".").upper() == "NONE", answer
