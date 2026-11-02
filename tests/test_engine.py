@@ -199,20 +199,19 @@ def test_init_broken_shims(tmp_path):
     assert again["broken_shims"] == ["CLAUDE.md"]
 
 
-def test_init_backup_collision_reports_failure(tmp_path):
-    # Pre-create backup and a modified live file to trigger backup collision
+def test_init_refuses_when_a_backup_survives(tmp_path):
+    # A surviving backup means a workspace existed; init must not set up over it.
     make_repo(tmp_path, {
         "CLAUDE.md": "modified content\n",
         ".ctx/sources/CLAUDE.md": "original backup\n"
     })
     result = init_cmd.run(tmp_path)
-    assert result["created"] is True
-    assert result.get("partial_shim_failure") is True
-    assert result["failed_shims"] == ["CLAUDE.md"]
-    assert "CLAUDE.md" not in result["connected"]
+    assert result["created"] is False
 
-    # Verify live is NOT shimmed (original content preserved)
     assert (tmp_path / "CLAUDE.md").read_text() == "modified content\n"
+    assert (core.sources_dir(tmp_path) / "CLAUDE.md").read_text() == "original backup\n"
+    assert not core.hub_path(tmp_path).exists()
+    assert not core.v2_manifest_path(tmp_path).exists()
 
 
 # --- sync -------------------------------------------------------------------

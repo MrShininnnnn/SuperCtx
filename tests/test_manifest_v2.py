@@ -79,6 +79,40 @@ def test_dump_round_trips_through_every_toml_loader():
     assert manifest.dump(manifest._parse(text)) == text
 
 
+def test_control_characters_round_trip_through_every_toml_loader():
+    doc = full_doc()
+    doc["natives"][1]["note"] = 'line one\nline two\ttab "quoted" back\\slash \x01 \x7f'
+    text = manifest.dump(manifest.validate(doc))
+
+    assert manifest.validate(manifest._parse(text)) == doc
+    assert manifest.validate(toml_compat._load_minimal(text)) == doc
+
+
+def test_migration_of_a_multiline_note_produces_a_readable_manifest(tmp_path):
+    project = v1_repo(tmp_path)
+    text = V1_MANIFEST.replace(
+        'note = "user-confirmed local convention; not verified official path"', 'note = "first\\nsecond"'
+    )
+    core.manifest_path(project).write_text(text, encoding="utf-8")
+
+    assert sync_cmd.run(project)["final_state"] == "healthy"
+    assert manifest.load_v2(project)["natives"][2]["note"] == "first\nsecond"
+    assert sync_cmd.run(project)["mutated"] is False
+
+
+def test_interrupted_migration_with_undecodable_v1_copy_is_reported_without_writing(tmp_path):
+    project = v1_repo(tmp_path)
+    core.manifest_path(project).write_text(manifest.sentinel_text(manifest.IN_PROGRESS), encoding="utf-8")
+    core.v1_backup_path(project).write_bytes(b"\xff\xfe not utf-8")
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert result["mode"] == "inspect"
+    assert result["mutated"] is False
+    assert snapshot(project) == before
+
+
 def _mutate(path, value):
     def apply(doc):
         target = doc
@@ -104,6 +138,13 @@ INVALID = {
     "duplicate canonical": (_mutate(["resources", 2, "canonical"], ".ctx/skills/review"), "Duplicate canonical"),
     "canonical outside .ctx": (_mutate(["resources", 1, "canonical"], "skills/review"), "must be under .ctx/"),
     "canonical in sources": (_mutate(["resources", 1, "canonical"], ".ctx/sources/review"), "outside .ctx/sources/"),
+    "canonical is sources": (_mutate(["resources", 1, "canonical"], ".ctx/sources"), "outside .ctx/sources/"),
+    "canonical is v2 manifest": (_mutate(["resources", 1, "canonical"], ".ctx/superctx.toml"), "reserved"),
+    "canonical is sentinel": (_mutate(["resources", 1, "canonical"], ".ctx/manifest.toml"), "reserved"),
+    "canonical is v1 copy": (_mutate(["resources", 1, "canonical"], ".ctx/manifest.v1.toml"), "reserved"),
+    "drive-qualified native": (_mutate(["natives", 0, "path"], "C:/outside/CLAUDE.md"), "relative POSIX path"),
+    "drive-relative native": (_mutate(["natives", 0, "path"], "C:CLAUDE.md"), "relative POSIX path"),
+    "drive-qualified canonical": (_mutate(["resources", 1, "canonical"], "C:/x/.ctx/review"), "relative POSIX path"),
     "hub moved": (_mutate(["resources", 0, "canonical"], ".ctx/HUB.md"), "exactly one instructions resource"),
     "no instructions": (_mutate(["resources", 0, "type"], "reference"), "exactly one instructions resource"),
     "absolute native": (_mutate(["natives", 0, "path"], "/etc/passwd"), "relative POSIX path"),
@@ -228,6 +269,75 @@ def test_init_refuses_when_sentinel_is_deleted(tmp_path):
 
     assert result["created"] is False
     assert snapshot(project) == before
+
+
+def test_init_refuses_workspace_whose_manifests_are_both_gone(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text("claude\n", encoding="utf-8")
+    init_cmd.run(tmp_path)
+    core.hub_path(tmp_path).write_text("hand-written hub\n", encoding="utf-8")
+    core.manifest_path(tmp_path).unlink()
+    core.v2_manifest_path(tmp_path).unlink()
+    before = snapshot(tmp_path)
+
+    result = init_cmd.run(tmp_path)
+
+    assert result["created"] is False
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("survivor", [".ctx/SUPERCTX.md", ".ctx/sources/CLAUDE.md", ".ctx/manifest.v1.toml",
+                                      ".ctx/skills/review/SKILL.md", ".ctx/.gitignore"])
+def test_init_refuses_when_any_ctx_content_survives(tmp_path, survivor):
+    (tmp_path / "CLAUDE.md").write_text("claude\n", encoding="utf-8")
+    (tmp_path / survivor).parent.mkdir(parents=True)
+    (tmp_path / survivor).write_text("keep me\n", encoding="utf-8")
+    before = snapshot(tmp_path)
+
+    result = init_cmd.run(tmp_path)
+
+    assert result["created"] is False
+    assert snapshot(tmp_path) == before
+
+
+def test_init_proceeds_with_an_empty_ctx_directory(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text("claude\n", encoding="utf-8")
+    core.ctx_dir(tmp_path).mkdir()
+
+    assert init_cmd.run(tmp_path)["created"] is True
+
+
+def test_manifest_writes_do_not_follow_symlinked_temp_files(tmp_path):
+    """A symlink planted at a predictable temp path must not redirect any manifest write."""
+    project = v1_repo(tmp_path)
+    outside = {}
+    for name in (core.V1_BACKUP_NAME, core.MANIFEST_NAME, core.V2_MANIFEST_NAME):
+        target = tmp_path / f"outside-{name}"
+        target.write_text(f"unrelated {name}\n", encoding="utf-8")
+        (core.ctx_dir(project) / f"{name}.tmp").symlink_to(target)
+        outside[target] = target.read_text(encoding="utf-8")
+
+    assert sync_cmd.run(project)["migrated"] is True
+
+    assert {path: path.read_text(encoding="utf-8") for path in outside} == outside
+    for path in (core.v1_backup_path(project), core.manifest_path(project), core.v2_manifest_path(project)):
+        assert path.is_file() and not path.is_symlink()
+    assert manifest.locate(project) == "v2"
+
+
+def test_sentinel_repair_does_not_follow_symlinked_temp_file(tmp_path):
+    project = v1_repo(tmp_path)
+    sync_cmd.run(project)
+    core.manifest_path(project).unlink()
+    target = tmp_path / "unrelated.txt"
+    target.write_text("unrelated\n", encoding="utf-8")
+    (core.ctx_dir(project) / f"{core.MANIFEST_NAME}.tmp").symlink_to(target)
+
+    assert sync_cmd.run(project)["migrated"] is True
+
+    assert target.read_text(encoding="utf-8") == "unrelated\n"
+    sentinel = core.manifest_path(project)
+    assert sentinel.is_file() and not sentinel.is_symlink()
+    assert sentinel.read_text(encoding="utf-8") == manifest.sentinel_text(manifest.COMPLETE)
 
 
 @pytest.mark.parametrize("damage", ["conflict", "lost", "unknown-key", "invalid-v1-entry"])

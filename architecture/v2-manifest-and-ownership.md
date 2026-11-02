@@ -31,7 +31,7 @@ name = "my-repo"
 [[resources]]
 id = "instructions"            # unique; [a-z0-9][a-z0-9._-]*
 type = "instructions"          # instructions | rule | skill | reference | planning
-canonical = ".ctx/SUPERCTX.md" # under .ctx/, outside .ctx/sources/
+canonical = ".ctx/SUPERCTX.md" # under .ctx/, outside .ctx/sources/, not a manifest file
 
 [[natives]]
 resource = "instructions"      # id of the owning resource
@@ -69,13 +69,14 @@ Sync migrates a v1 workspace before doing anything else. The write order is:
 3. write `.ctx/superctx.toml`
 4. replace the sentinel with `migration = "complete"`
 
-Each step is an atomic replace. Before step 2 the workspace is still a plain v1 workspace. From step 2 on, every 0.1.x client refuses it.
+Each step is an atomic replace from a temporary file created exclusively in `.ctx/`, so nothing already at a temporary path (such as a symlink) is followed. Before step 2 the workspace is still a plain v1 workspace. From step 2 on, every 0.1.x client refuses it.
 
 `locate()` classifies the workspace from these files:
 
 | `.ctx/superctx.toml` | `.ctx/manifest.toml` | State | Sync |
 |---|---|---|---|
-| absent | absent | not set up | — |
+| absent | absent, `.ctx/` empty or missing | not set up | set up |
+| absent | absent, other `.ctx/` content survives | `orphaned` | **refuse** to set up over it |
 | absent | v1 manifest | `v1` | migrate |
 | absent | sentinel, in progress, v1 copy present | `interrupted` | resume from the v1 copy |
 | absent | sentinel, complete (or in progress without a v1 copy) | `lost` | **refuse** and report |

@@ -124,7 +124,7 @@ def diagnostics(project_dir: Path, module_path: Path | None = None) -> dict:
 def run(project_dir: Path) -> list[dict]:
     project_dir = Path(project_dir)
 
-    if manifest_mod.locate(project_dir) == "none":
+    if manifest_mod.locate(project_dir) in ("none", "orphaned"):
         raise StatusError(
             "SuperCtx is not initialized in this project. "
             "Please offer to set up SuperCtx (with explicit consent) first."
@@ -255,7 +255,7 @@ def detect_repo_state(project_dir: Path) -> dict:
             reasons.append("sentinel_missing")
 
         # Check manifest existence
-        if manifest_kind == "none":
+        if manifest_kind in ("none", "orphaned"):
             reasons.append("manifest_missing")
             candidates = []
             for entry in registry.instruction_conventions():

@@ -199,8 +199,20 @@ def validate_v1(data) -> dict:
     return data
 
 
+_TOML_ESCAPES = {'"': '\\"', "\\": "\\\\", "\n": "\\n", "\t": "\\t", "\r": "\\r", "\b": "\\b", "\f": "\\f"}
+
+
 def _toml_str(value: str) -> str:
-    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    # Basic strings cannot hold raw control characters.
+    out = []
+    for ch in str(value):
+        if ch in _TOML_ESCAPES:
+            out.append(_TOML_ESCAPES[ch])
+        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+            out.append(f"\\u{ord(ch):04x}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
 
 
 def _toml_array(items) -> str:

@@ -9,7 +9,8 @@ from __future__ import annotations
 import io
 import os
 import re
-from pathlib import Path, PurePosixPath
+import tempfile
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from . import core, toml_compat
 
@@ -28,6 +29,9 @@ _ROOT_KEYS = {"schema", "project", "resources", "natives"}
 _PROJECT_KEYS = {"name"}
 _RESOURCE_KEYS = {"id", "type", "canonical"}
 _NATIVE_KEYS = {"resource", "path", "mode", "tools", "backup", "note", "published_hash"}
+_RESERVED_CANONICALS = {
+    f"{core.CTX_DIRNAME}/{name}" for name in (core.MANIFEST_NAME, core.V2_MANIFEST_NAME, core.V1_BACKUP_NAME)
+}
 
 # Indirection so tests can simulate a crash around each atomic replace.
 _replace = os.replace
@@ -53,9 +57,21 @@ def _parse(text: str) -> dict:
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    _replace(tmp, path)
+    # mkstemp creates a new file exclusively (O_CREAT | O_EXCL), so a symlink or
+    # file already sitting at a predictable temp name is never followed or reused.
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            if hasattr(os, "fchmod"):
+                # mkstemp creates 0600; give the manifest the usual umask-based mode.
+                umask = os.umask(0)
+                os.umask(umask)
+                os.fchmod(fh.fileno(), 0o666 & ~umask)
+            fh.write(text)
+        _replace(tmp, path)
+    finally:
+        if os.path.lexists(tmp):
+            os.unlink(tmp)
 
 
 def _sentinel_state(path: Path) -> str | None:
@@ -85,6 +101,11 @@ def locate(project_dir: Path) -> str:
             return "v2_unsealed"
         return "conflict"
     if sentinel is None:
+        # Without either manifest, any surviving .ctx/ content (hub, backups, v1
+        # copy, canonical resources) still marks an existing workspace.
+        cdir = core.ctx_dir(project_dir)
+        if cdir.is_dir() and any(cdir.iterdir()):
+            return "orphaned"
         return "none"
     if sentinel == "other":
         return "v1"
@@ -98,7 +119,8 @@ def locate(project_dir: Path) -> str:
 def _check_rel_path(value, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise core.SchemaError(f"{label} must be a non-empty string")
-    if "\\" in value or PurePosixPath(value).is_absolute():
+    # PurePosixPath treats "C:/x" and "C:x" as relative; Windows would not.
+    if "\\" in value or PurePosixPath(value).is_absolute() or PureWindowsPath(value).drive:
         raise core.SchemaError(f"{label} must be a relative POSIX path: {value}")
     parts = PurePosixPath(value).parts
     if not parts or ".." in parts or PurePosixPath(*parts).as_posix() != value:
@@ -139,10 +161,11 @@ def validate(doc: dict) -> dict:
         if res.get("type") not in TYPES:
             raise core.SchemaError(f"Resource {rid} has unknown type: {res.get('type')!r}")
         canonical = _check_rel_path(res.get("canonical"), f"Resource {rid} 'canonical'")
-        if not canonical.startswith(f"{core.CTX_DIRNAME}/") or canonical.startswith(
-            f"{core.CTX_DIRNAME}/{core.SOURCES_DIRNAME}/"
-        ):
+        sources = f"{core.CTX_DIRNAME}/{core.SOURCES_DIRNAME}"
+        if not canonical.startswith(f"{core.CTX_DIRNAME}/") or canonical == sources or canonical.startswith(sources + "/"):
             raise core.SchemaError(f"Resource {rid} 'canonical' must be under .ctx/ and outside .ctx/sources/: {canonical}")
+        if canonical in _RESERVED_CANONICALS:
+            raise core.SchemaError(f"Resource {rid} 'canonical' is a reserved manifest path: {canonical}")
         if canonical in canonicals:
             raise core.SchemaError(f"Duplicate canonical path: {canonical}")
         types[rid] = res["type"]
@@ -281,7 +304,7 @@ def load_view(project_dir: Path) -> dict:
         return view(load_v2(project_dir))
     if kind == "v1":
         return core.load_v1_manifest(core.manifest_path(project_dir))
-    if kind == "none":
+    if kind in ("none", "orphaned"):
         raise FileNotFoundError(f"No SuperCtx manifest in {core.ctx_dir(project_dir)}")
     raise core.SchemaError(f"SuperCtx manifest state is {kind}")
 
@@ -306,7 +329,7 @@ def migrate(project_dir: Path) -> bool:
     manifest_p = core.manifest_path(project_dir)
     backup_p = core.v1_backup_path(project_dir)
 
-    if kind in ("v2", "none"):
+    if kind in ("v2", "none", "orphaned"):
         return False
 
     if kind == "v2_unsealed":
@@ -324,14 +347,10 @@ def migrate(project_dir: Path) -> bool:
             ".ctx/superctx.toml exists but .ctx/manifest.toml is not a SuperCtx 0.2 sentinel; inspect both files."
         )
 
-    if kind == "interrupted":
-        v1_text = backup_p.read_text(encoding="utf-8")
-        source = ".ctx/manifest.v1.toml"
-    else:
-        v1_text = manifest_p.read_text(encoding="utf-8")
-        source = ".ctx/manifest.toml"
-
+    source_p = backup_p if kind == "interrupted" else manifest_p
+    source = f"{core.CTX_DIRNAME}/{source_p.name}"
     try:
+        v1_text = source_p.read_text(encoding="utf-8")
         doc = from_v1(core.validate_v1(_parse(v1_text)))
     except Exception as e:
         raise MigrationError(f"{source} is not a valid SuperCtx 0.1.x manifest: {e}") from e

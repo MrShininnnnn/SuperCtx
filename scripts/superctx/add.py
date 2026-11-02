@@ -31,7 +31,7 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
             "SuperCtx is not set up for this repository. "
             "Use superctx sync to set up/check/repair the shared context before adding a specific file."
         )
-    elif manifest_mod.locate(project_dir) == "none":
+    elif manifest_mod.locate(project_dir) in ("none", "orphaned"):
         raise AddError(
             "SuperCtx is present, but the configuration manifest is missing or invalid. "
             "Please inspect the setup."
