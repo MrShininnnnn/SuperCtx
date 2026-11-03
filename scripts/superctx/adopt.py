@@ -103,7 +103,13 @@ def _tree(path: Path) -> dict | None:
     if path.is_symlink() or not path.is_dir():
         return {".": entry(path)}
     tree = {".": ("dir",)}
-    for dirpath, dirnames, filenames in os.walk(path):
+
+    def fail(error: OSError) -> None:
+        # By default os.walk skips a directory it cannot read, which would make an
+        # unreadable edit look identical to the backup. Fail the comparison instead.
+        raise error
+
+    for dirpath, dirnames, filenames in os.walk(path, onerror=fail):
         for name in dirnames + filenames:
             item = Path(dirpath) / name
             tree[item.relative_to(path).as_posix()] = entry(item)

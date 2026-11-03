@@ -239,6 +239,30 @@ def _native_snapshot(project: Path, rel: str):
     return (path.is_symlink(), stat.S_IMODE(os.lstat(path).st_mode), path.read_bytes(), os.lstat(path).st_mtime_ns)
 
 
+def test_a_scan_error_while_comparing_with_the_backup_is_not_a_match(tmp_path, monkeypatch):
+    project = happy_repo(tmp_path)
+    (project / ".claude/skills/review/assets").mkdir()
+    _interrupt_before_publish(project, monkeypatch)
+    write(project, ".claude/skills/review/assets/edit", "added after the backup\n")
+    unreadable = str(project / ".claude/skills/review/assets")
+    real_scandir = os.scandir
+
+    def scandir(path="."):
+        if os.fspath(path) == unreadable:
+            raise PermissionError(13, "Permission denied", unreadable)
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", scandir)
+    result = sync_cmd.run(project)
+    monkeypatch.undo()
+
+    assert {"path": ".claude/skills/review", "reason": "native_edited"} in result["unresolved"]
+    native = project / ".claude/skills/review"
+    assert native.is_dir() and not native.is_symlink()
+    assert (native / "assets/edit").read_text(encoding="utf-8") == "added after the backup\n"
+    assert not os.path.lexists(project / ".ctx/skills/review")
+
+
 def test_an_interrupted_setup_with_a_missing_backup_is_not_resumed(tmp_path, monkeypatch):
     import shutil
     project = happy_repo(tmp_path)
