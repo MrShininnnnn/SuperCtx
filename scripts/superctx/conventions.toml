@@ -104,3 +104,47 @@ tools    = ["Google Antigravity"]
 source   = "https://antigravity.google/docs/home"
 verified = ""
 note     = "UNVERIFIED — confirm against official Antigravity docs (.agents vs .agy)."
+
+# ---------------------------------------------------------------------------
+# Rules and skills (v0.2)
+# ---------------------------------------------------------------------------
+# `kind`:
+#   "rules"  — every file under `path` (recursively) ending in one of `suffixes` is one rule.
+#   "skills" — every direct subdirectory of `path` that contains SKILL.md is one skill.
+# `canonical` is where an adopted resource lives under .ctx/; it keeps the native
+# path's depth, so relative references resolve the same through the link or the target.
+# `publish = "link"` means SuperCtx adopts the resource by moving it to `canonical` and
+# leaving a relative symlink at the native path. Set it only after the tool's behavior
+# through that link has been checked with the real tool (`verified_behavior`). Without
+# `publish`, resources are discovered and left in place.
+
+[[convention]]
+path              = ".claude/rules/"
+kind              = "rules"
+suffixes          = [".md"]
+canonical         = ".ctx/rules/"
+publish           = "link"
+tools             = ["Claude Code"]
+source            = "https://code.claude.com/docs/en/memory"
+verified          = "2026-11-02"
+verified_behavior = "Claude Code 2.1.200, macOS: a rule with paths frontmatter, published as a relative file symlink, loads when a matching file is read and stays inactive for a non-matching file (tests/test_real_agents.py)."
+
+[[convention]]
+path              = ".claude/skills/"
+kind              = "skills"
+canonical         = ".ctx/skills/"
+publish           = "link"
+tools             = ["Claude Code"]
+source            = "https://code.claude.com/docs/en/skills"
+verified          = "2026-11-02"
+verified_behavior = "Claude Code 2.1.200, macOS: a skill published as a relative directory symlink is invoked by name, runs its bundled script, and reads its bundled reference (tests/test_real_agents.py)."
+
+[[convention]]
+path      = ".cursor/rules/"
+kind      = "rules"
+suffixes  = [".mdc", ".md"]
+canonical = ".ctx/rules/"
+tools     = ["Cursor"]
+source    = "https://cursor.com/docs/context/rules"
+verified  = "2026-11-02"
+note      = "Discovered and left in place: Cursor's rule behavior through links has not been verified (Cursor is not available in the verification environment)."

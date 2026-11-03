@@ -14,6 +14,37 @@ from . import sync as sync_cmd
 from . import add as add_cmd
 
 
+# Why a path was left in place or could not be published.
+REASONS = {
+    "unsafe_path": "a symlink in its path could redirect the write, so SuperCtx left it unchanged",
+    "native_edited": "it holds content someone wrote, so SuperCtx left it unchanged",
+    "native_replaced": "a file or folder replaced what SuperCtx published there",
+    "link_retargeted": "the link points somewhere other than its canonical copy in .ctx/",
+    "canonical_missing": "its canonical copy in .ctx/ is missing; restore it from version control or .ctx/sources/",
+    "not_verified": "SuperCtx has not verified this tool's behavior through a link",
+    "already_a_symlink": "it is already a symlink you manage",
+    "contains_symlink": "it contains symlinks, which could break after moving it",
+    "no_skill_md": "the folder has no SKILL.md",
+    "name_collision": "another resource would get the same name or canonical path",
+    "canonical_exists": "something already exists at its canonical path in .ctx/",
+    "backup_exists": "a backup already exists for it in .ctx/sources/",
+    "backup_exists_and_live_has_edits": "inspect the backup in .ctx/sources/ against your local version",
+}
+
+
+def _explain(reason: str) -> str:
+    return f"{reason}: {REASONS[reason]}" if reason in REASONS else reason
+
+
+def _print_left_in_place(result: dict) -> None:
+    left = result.get("left_in_place", [])
+    if left:
+        print()
+        print("Left in place:")
+        for item in left:
+            print(f"- {item['path']} ({item['type']}): {_explain(item['reason'])}")
+
+
 def _print_init_result(result: dict, project_dir: Path) -> None:
     if not result["created"]:
         if result.get("partially_migrated"):
@@ -39,6 +70,13 @@ def _print_init_result(result: dict, project_dir: Path) -> None:
             print(f"- {file}")
         print()
 
+    linked = result.get("linked", [])
+    if linked:
+        print("Linked (moved into .ctx/, with a symlink at the original path):")
+        for path in linked:
+            print(f"- {path}")
+        print()
+
     hub = result.get("hub")
     if hub:
         print("Hub:")
@@ -55,16 +93,12 @@ def _print_init_result(result: dict, project_dir: Path) -> None:
     failed_shims = result.get("failed_shims", [])
     if failed_shims:
         reasons = result.get("failed_reasons", {})
-        print("WARNING: Some shims could not be applied:")
-        for shim in failed_shims:
-            print(f"  ! {shim}: {reasons.get(shim, 'unknown')}")
-        explanations = {
-            "unsafe_path": "the file or its backup path goes through a symlink, so SuperCtx left it unchanged.",
-            "backup_exists_and_live_has_edits": "inspect the backup in .ctx/sources/ against your local version.",
-        }
-        for reason in sorted(set(reasons.values()) & explanations.keys()):
-            print(f"{reason}: {explanations[reason]}")
+        print("WARNING: Some adopted paths could not be published:")
+        for path in failed_shims:
+            print(f"  ! {path}: {_explain(reasons.get(path, 'unknown'))}")
         print()
+
+    _print_left_in_place(result)
 
     untracked = result.get("untracked", [])
     if untracked:
@@ -99,6 +133,7 @@ def _cmd_sync(project_dir: Path) -> int:
 
     elif mode == "healthy":
         print("All SuperCtx context links are healthy.")
+        _print_left_in_place(result)
         candidates = result.get("candidates", [])
         if candidates:
             print()
@@ -133,7 +168,7 @@ def _cmd_sync(project_dir: Path) -> int:
         if result["unresolved"]:
             print("Unresolved shims:")
             for item in result["unresolved"]:
-                print(f"  ! {item['path']}: {item['reason']}")
+                print(f"  ! {item['path']}: {_explain(item['reason'])}")
             print()
 
         if result["warnings"]:
@@ -144,6 +179,8 @@ def _cmd_sync(project_dir: Path) -> int:
                 else:
                     print(f"  ! {warning['path']}: {warning['reason']}")
             print()
+
+        _print_left_in_place(result)
 
         if not any(result[key] for key in ("repaired", "unresolved", "warnings")):
             if result.get("healthy"):

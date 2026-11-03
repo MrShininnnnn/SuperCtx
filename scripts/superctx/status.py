@@ -16,7 +16,7 @@ from pathlib import Path
 import os
 import json
 
-from . import core, manifest as manifest_mod, registry, shim
+from . import adopt, core, manifest as manifest_mod, registry, shim
 
 
 class StatusError(Exception):
@@ -166,7 +166,7 @@ def run(project_dir: Path) -> list[dict]:
                 "state": "missing_shim",
                 "import_syntax": import_syntax
             })
-        elif not shim.is_shim_file(live):
+        elif not shim.is_generated_pointer_file(project_dir, rel, backup_required):
             results.append({
                 "kind": "shim",
                 "path": rel,
@@ -333,7 +333,8 @@ def detect_repo_state(project_dir: Path) -> dict:
             }
 
         files = manifest.get("files", [])
-        tracked = {entry["path"] for entry in files}
+        links = manifest.get("links", [])
+        tracked = {entry["path"] for entry in files} | {link["path"] for link in links}
 
         if "hub_missing" in reasons or "hub_empty" in reasons:
             return {
@@ -352,15 +353,24 @@ def detect_repo_state(project_dir: Path) -> dict:
 
             if not live.is_file():
                 reasons.append("missing_shim")
-            elif not shim.is_shim_file(live):
-                if backup_required and not backup.is_file():
-                    reasons.append("unbacked_live_file")
-                    is_legacy = True
-                else:
-                    reasons.append("broken_shim")
+            elif not shim.is_generated_pointer_file(project_dir, rel, backup_required):
+                # Repair finishes an interrupted adoption or reports an edit; it
+                # never writes over content someone put there.
+                reasons.append("broken_shim")
+            elif not entry.get("published", True):
+                reasons.append("publication_pending")
 
             if backup_required and not backup.is_file():
                 reasons.append("missing_backup")
+
+        for link in links:
+            link_state = adopt.link_state(project_dir, link["path"], link["canonical"], link["published"])
+            if link_state in ("missing", "pending"):
+                reasons.append("missing_link")
+            elif link_state != "healthy":
+                reasons.append("link_conflict")
+            elif not link["published"]:
+                reasons.append("publication_pending")
 
         # Include candidate files in reasons/candidates list
         discovery = registry.detect_all(project_dir)
@@ -369,17 +379,14 @@ def detect_repo_state(project_dir: Path) -> dict:
             for cand in discovery.get(key, []):
                 if cand["path"] not in tracked:
                     untracked.append(cand["path"])
+        untracked += [c["path"] for c in adopt.plan(project_dir)[0] if c["path"] not in tracked]
 
         if untracked:
             reasons.append("untracked_candidates_found")
 
         critical_reasons = [r for r in reasons if r != "untracked_candidates_found"]
 
-        if is_legacy:
-            reasons.append("unbacked_live_file")
-            state = "managed_legacy"
-            rec_action = "migrate"
-        elif critical_reasons:
+        if critical_reasons:
             state = "managed_needs_repair"
             rec_action = "repair"
         else:
@@ -396,7 +403,7 @@ def detect_repo_state(project_dir: Path) -> dict:
 
     # 2. Unmanaged Repo: `.ctx/` does not exist
     else:
-        detected = registry.detect(project_dir)
+        detected = registry.detect(project_dir) + adopt.plan(project_dir)[0]
         if detected:
             candidates = sorted([c["path"] for c in detected])
             return {

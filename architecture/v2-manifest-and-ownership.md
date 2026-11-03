@@ -17,6 +17,7 @@ Released v0.1.x clients must not modify a v0.2 workspace. The migration-safety g
 | `.ctx/manifest.toml` | compatibility sentinel; never a v2 manifest |
 | `.ctx/manifest.v1.toml` | v1 manifest copied at migration, for recovery |
 | `.ctx/sources/<native path>` | original content of an adopted native path (inactive backup) |
+| `.ctx/rules/`, `.ctx/skills/` | canonical rules and skills, linked from their native paths (created only when one is adopted) |
 
 The sentinel is valid TOML whose `files` key is a string. Every 0.1.x loader requires an array there, raises `SchemaError`, and takes its no-write branch. Its `migration` key is `"in-progress"` or `"complete"`.
 
@@ -39,6 +40,7 @@ path = "CLAUDE.md"             # repo-relative, outside .ctx/
 mode = "pointer"               # pointer | link | generated
 tools = ["Claude Code"]
 backup = true                  # original content is at .ctx/sources/<path>
+# published = false            # only while initial publication is pending (see Adoption)
 note = "..."                   # optional
 # published_hash = "sha256:<64 hex>"  # required for generated, forbidden otherwise
 ```
@@ -61,6 +63,32 @@ Mode is recorded per native path, not per resource: one skill may be linked into
 SuperCtx never writes through a symlink it did not create. Commands refuse to write while `.ctx/` itself, the hub, `.ctx/sources/` or its README, `.ctx/.gitignore`, or a manifest file is a symlink. A pointer native whose path or backup path passes through any symlink is reported as `unsafe_path` and left unchanged, because the link could redirect the write into `.ctx/`, outside the repository, or onto an unrelated file. Migration checks that every manifest path it replaces is absent or a regular file before its first write.
 
 A conflict is reported and changes nothing: sync never overwrites a native with unexpected content and never rewrites a canonical resource from a native one. Generated pointer content is disposable; a native's original content is never discarded, because adoption backs it up first.
+
+A pointer counts as unedited only when it matches, byte for byte (line endings aside), a rendering SuperCtx produces for that path: the current one, or the v0.1.2–v0.1.4 one, which sync refreshes to the current wording. Searching for the generated marker is not enough, because a pointer with lines added keeps the marker. Sync rewrites a pointer only when it is missing, or, while its initial publication is pending, when the file still holds exactly its backed-up original. Any other content at a pointer path stays where it is and is reported as `native_edited`, whether or not a backup exists. That includes the original content restored on purpose after setup.
+
+## Adoption
+
+SuperCtx adopts a resource when it can preserve how the tool uses it: an instruction file gets a pointer to the hub, and a rule or skill whose tool has been verified through a link (`publish = "link"` in `conventions.toml`) gets a relative symlink at its native path. Canonical paths keep the native path's depth (`.claude/skills/review` → `.ctx/skills/review`), so relative references inside a resource resolve to the same place through the link or the target. The verified tools and versions are listed in `architecture/compatibility.md`.
+
+Running `/superctx:sync` in a repository without `.ctx/` is the decision to set up shared context, and sync does it in one step:
+
+1. Discover instruction files, rules, and skills. Check each for conflicts.
+2. Build the new `.ctx/` (backups, hub, manifest, sentinel) in a staging directory inside the repository, then install it with one rename. A failure up to this point leaves the repository unchanged; a staging directory left by a crash is removed by the next run.
+3. Publish each native: write the pointer, or move the rule or skill to its canonical path and create the link.
+
+Setup and `add` record each new native with `published = false`, publish it, and then record it as published. Every publish step can be repeated, so a sync after an interruption finishes the job and records it. The flag is what lets sync tell finishing an adoption from inspecting something it already published: only an unpublished native may have its original bytes replaced by a pointer, or be moved into `.ctx/`, and only while it is identical to the backup setup took (same paths, bytes, and executable bits); anything changed since stays in place as `native_edited`. Natives migrated from v0.1.x are published. A linked native is in one of these states:
+
+| State | Native path | Canonical path | Sync |
+|---|---|---|---|
+| healthy | symlink to the canonical path | present | — |
+| missing | absent | present | create the link |
+| pending (unpublished only) | the original, identical to its backup | absent | move it, then create the link |
+| `native_edited` (unpublished only) | differs from its backup, or no backup | absent | report |
+| `link_retargeted` | symlink elsewhere | any | report |
+| `native_replaced` | a real file or folder | present | report |
+| `canonical_missing` | absent, a symlink, or (once published) a real file or folder | absent | report |
+
+In an existing workspace, newly discovered resources are listed as candidates and adopted with `/superctx:add <path>`. Resources that cannot be adopted stay where they are, and every sync reports why: `not_verified` (no verified link behavior for the tool), `already_a_symlink`, `contains_symlink` (a link inside a skill could break when it moves), `no_skill_md`, `name_collision` (two resources would share a name or canonical path), `canonical_exists`, `backup_exists`, or `unsafe_path`.
 
 ## Migration
 

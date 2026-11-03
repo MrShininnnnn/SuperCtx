@@ -407,3 +407,35 @@ def test_interrupted_upgrade_resumes_but_lost_v2_manifest_is_refused(tmp_path, l
     assert result["mutated"] is False
     assert "restore it from version control" in result["message"]
     assert snapshot(lost) == before
+
+
+@pytest.mark.parametrize("op", ALL_OPS)
+def test_legacy_client_refuses_a_workspace_set_up_with_linked_rules_and_skills(tmp_path, legacy_scripts, op):
+    project = tmp_path / "repo"
+    project.mkdir()
+    write(project, "CLAUDE.md", CLAUDE_ORIGINAL)
+    write(project, ".claude/rules/python.md", RULE_MD)
+    write(project, ".claude/skills/review/SKILL.md", SKILL_MD)
+    write(project, ".claude/skills/review/scripts/run.sh", RUN_SH, mode=0o755)
+    assert sync_cmd.run(project)["final_state"] == "healthy"
+    write(project, "GEMINI.md", GEMINI_UNTRACKED)  # untracked, for the add-untracked op
+    assert os.path.islink(project / ".claude/skills/review")
+    before = snapshot(project)
+
+    result = run_legacy(legacy_scripts, project, op)
+
+    assert_refused(result, op)
+    assert snapshot(project) == before
+
+
+def test_pointers_written_by_the_released_client_stay_healthy_after_migration(tmp_path, legacy_scripts):
+    """v0.1.4 shims lack the current edit-policy line; they are SuperCtx's own output, not edits."""
+    project = build_v1(tmp_path / "repo", legacy_scripts)
+
+    result = sync_cmd.run(project)
+
+    assert result["final_state"] == "healthy", result
+    assert all(n.get("published", True) for n in manifest_mod.load_v2(project)["natives"])
+    for rel in ("CLAUDE.md", "AGENTS.md"):
+        assert "do not edit" in (project / rel).read_text(encoding="utf-8")
+    assert sync_cmd.run(project)["mutated"] is False

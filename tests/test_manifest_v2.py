@@ -60,7 +60,7 @@ def v1_repo(tmp_path: Path) -> Path:
     for rel, backup in (("CLAUDE.md", True), (".github/copilot-instructions.md", False), ("docs/AGENT.md", True)):
         live = project / rel
         live.parent.mkdir(parents=True, exist_ok=True)
-        live.write_text(shim.generate_shim(rel, "plain-pointer", backup_required=backup), encoding="utf-8")
+        live.write_text(shim.generated_pointers(rel, backup_required=backup)[0], encoding="utf-8")
         if backup:
             src = core.sources_dir(project) / rel
             src.parent.mkdir(parents=True, exist_ok=True)
@@ -230,9 +230,10 @@ def test_sync_migrates_v1_workspace_and_second_sync_makes_no_changes(tmp_path):
         ("docs/AGENT.md", "pointer", [], True, "user-confirmed local convention; not verified official path"),
     ]
     assert core.load_manifest(project)["files"] == [
-        {"path": "CLAUDE.md", "tools": ["Claude Code"], "backup_required": True},
-        {"path": ".github/copilot-instructions.md", "tools": ["GitHub Copilot"], "backup_required": False},
-        {"path": "docs/AGENT.md", "tools": [], "backup_required": True,
+        {"path": "CLAUDE.md", "tools": ["Claude Code"], "backup_required": True, "published": True},
+        {"path": ".github/copilot-instructions.md", "tools": ["GitHub Copilot"], "backup_required": False,
+         "published": True},
+        {"path": "docs/AGENT.md", "tools": [], "backup_required": True, "published": True,
          "note": "user-confirmed local convention; not verified official path"},
     ]
     assert {rel: (project / rel).read_text(encoding="utf-8") for rel in shims_before} == shims_before

@@ -80,6 +80,42 @@ def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = Tru
             f"{backup_line}\n"
         )
 
+def _import_syntax(rel_path: str) -> str:
+    conv = registry.lookup_known_convention(rel_path)
+    return conv.get("import_syntax", "plain-pointer") if conv else "plain-pointer"
+
+
+def generated_pointers(rel_path: str, backup_required: bool = True) -> list[str]:
+    """Every rendering SuperCtx has published at rel_path: the current one first, then
+    the v0.1.2-v0.1.4 form, which lacks the edit-policy line."""
+    current = generate_shim(rel_path, _import_syntax(rel_path), backup_required=backup_required)
+    return [current, current.replace(f"{_redirect_line(rel_path)}\n\n", "", 1)]
+
+
+def is_generated_pointer(content: str, rel_path: str, backup_required: bool = True) -> bool:
+    """True only for content SuperCtx wrote, byte for byte (line endings aside).
+
+    is_shim() only looks for the marker and hub path, so it also accepts a pointer
+    someone added lines to; anything that must not overwrite edits uses this check.
+    """
+    return content.replace("\r\n", "\n") in generated_pointers(rel_path, backup_required)
+
+
+def is_any_generated_pointer(content: str, rel_path: str) -> bool:
+    """is_generated_pointer for a path whose backup wording is not known (not yet tracked)."""
+    return is_generated_pointer(content, rel_path, True) or is_generated_pointer(content, rel_path, False)
+
+
+def is_generated_pointer_file(project_dir: Path, rel_path: str, backup_required: bool = True) -> bool:
+    path = Path(project_dir) / rel_path
+    if not path.is_file():
+        return False
+    try:
+        return is_generated_pointer(path.read_text(encoding="utf-8"), rel_path, backup_required)
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
 def _is_within(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
 
@@ -106,6 +142,37 @@ def _is_safe_target(project_dir: Path, rel_path: str) -> bool:
         and not _is_within(live, core.ctx_dir(root))
         and _is_within(backup, core.sources_dir(root))
     )
+
+
+def publish_pointer(project_dir: Path, rel_path: str, backup_required: bool = True,
+                    published: bool = True) -> dict:
+    """Write the pointer for an adopted native, never over content someone wrote.
+
+    Writes when the native is missing. Before the native's first publication is
+    recorded (published=False), it also writes over the native's exact backed-up
+    original, which is what an interrupted setup leaves. After that, the same bytes
+    mean someone restored the original on purpose, so they are left in place. Any
+    other content is reported: native_edited for a file, native_replaced for a
+    directory or other non-file.
+    """
+    project_dir = Path(project_dir)
+    live = project_dir / rel_path
+    backup = core.sources_dir(project_dir) / rel_path
+    if not _is_safe_target(project_dir, rel_path):
+        return {"rel_path": rel_path, "shimmed": False, "reason": "unsafe_path"}
+    if os.path.lexists(live) and not live.is_file():
+        return {"rel_path": rel_path, "shimmed": False, "reason": "native_replaced"}
+    if live.is_file():
+        content = live.read_bytes()
+        if is_generated_pointer(content.decode("utf-8", errors="replace"), rel_path, backup_required):
+            return {"rel_path": rel_path, "shimmed": True, "already_shim": True}
+        resuming = not published and backup.is_file() and backup.read_bytes() == content
+        if not resuming:
+            return {"rel_path": rel_path, "shimmed": False, "reason": "native_edited"}
+
+    live.parent.mkdir(parents=True, exist_ok=True)
+    live.write_text(generate_shim(rel_path, _import_syntax(rel_path), backup_required=backup_required), encoding="utf-8")
+    return {"rel_path": rel_path, "shimmed": True, "already_shim": False}
 
 
 def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False, backup_required: bool = True) -> dict:
@@ -142,7 +209,7 @@ def apply_shim(project_dir: Path, rel_path: str, force_backup: bool = False, bac
 
     if live_exists:
         live_content = live_file.read_text(encoding="utf-8")
-        already_shim = is_shim(live_content)
+        already_shim = is_any_generated_pointer(live_content, rel_path)
 
     backed_up = False
     if live_exists and not already_shim:

@@ -28,7 +28,7 @@ _HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ROOT_KEYS = {"schema", "project", "resources", "natives"}
 _PROJECT_KEYS = {"name"}
 _RESOURCE_KEYS = {"id", "type", "canonical"}
-_NATIVE_KEYS = {"resource", "path", "mode", "tools", "backup", "note", "published_hash"}
+_NATIVE_KEYS = {"resource", "path", "mode", "tools", "backup", "published", "note", "published_hash"}
 _RESERVED_CANONICALS = {
     f"{core.CTX_DIRNAME}/{name}" for name in (core.MANIFEST_NAME, core.V2_MANIFEST_NAME, core.V1_BACKUP_NAME)
 }
@@ -199,6 +199,8 @@ def validate(doc: dict) -> dict:
             raise core.SchemaError(f"Native {path} 'tools' must be an array of strings")
         if not isinstance(nat.get("backup", True), bool):
             raise core.SchemaError(f"Native {path} 'backup' must be a boolean")
+        if not isinstance(nat.get("published", True), bool):
+            raise core.SchemaError(f"Native {path} 'published' must be a boolean")
         if "note" in nat and not isinstance(nat["note"], str):
             raise core.SchemaError(f"Native {path} 'note' must be a string")
         if mode == "generated":
@@ -249,6 +251,9 @@ def dump(doc: dict) -> str:
             f"tools = {core._toml_array(nat.get('tools', []))}",
             f"backup = {core._toml_bool(nat.get('backup', True))}",
         ]
+        # Written only while initial publication is pending; absent means published.
+        if not nat.get("published", True):
+            lines.append("published = false")
         if "note" in nat:
             lines.append(f"note = {core._toml_str(nat['note'])}")
         if "published_hash" in nat:
@@ -270,8 +275,11 @@ def new_doc(project_name: str) -> dict:
     }
 
 
-def instruction_native(path: str, tools: list, backup: bool = True, note: str | None = None) -> dict:
+def instruction_native(path: str, tools: list, backup: bool = True, note: str | None = None,
+                       published: bool = True) -> dict:
     native = {"resource": INSTRUCTIONS_ID, "path": path, "mode": "pointer", "tools": list(tools), "backup": backup}
+    if not published:
+        native["published"] = False
     if note is not None:
         native["note"] = note
     return native
@@ -287,18 +295,30 @@ def from_v1(v1: dict) -> dict:
 
 
 def view(doc: dict) -> dict:
-    """The {project, files} shape the shim engine works with: instruction pointers only."""
+    """The {project, files, links} shape the engine works with.
+
+    files: instruction pointers. links: linked natives with their canonical path.
+    """
+    canonicals = {r["id"]: r for r in doc.get("resources", [])}
     files = []
+    links = []
     for nat in doc.get("natives", []):
+        if nat["mode"] == "link":
+            res = canonicals[nat["resource"]]
+            links.append({"path": nat["path"], "canonical": res["canonical"], "type": res["type"],
+                          "published": nat.get("published", True)})
+            continue
         if nat["resource"] != INSTRUCTIONS_ID:
             continue
-        entry = {"path": nat["path"], "tools": nat.get("tools", []), "backup_required": nat.get("backup", True)}
+        entry = {"path": nat["path"], "tools": nat.get("tools", []), "backup_required": nat.get("backup", True),
+                 "published": nat.get("published", True)}
         if "note" in nat:
             entry["note"] = nat["note"]
         files.append(entry)
     return {
         "project": {"name": doc.get("project", {}).get("name", ""), "hub": f"{core.CTX_DIRNAME}/{core.HUB_NAME}"},
         "files": files,
+        "links": links,
     }
 
 
@@ -319,6 +339,19 @@ def write(project_dir: Path, doc: dict) -> None:
     """Write a v2 manifest, then seal it with the complete sentinel."""
     _atomic_write(core.v2_manifest_path(project_dir), dump(validate(doc)))
     _atomic_write(core.manifest_path(project_dir), sentinel_text(COMPLETE))
+
+
+def mark_published(project_dir: Path, paths) -> None:
+    """Record that these natives' initial publication finished. After this, sync only
+    repairs them; it never adopts content found at their paths."""
+    doc = load_v2(project_dir)
+    changed = False
+    for nat in doc["natives"]:
+        if nat["path"] in paths and not nat.get("published", True):
+            del nat["published"]
+            changed = True
+    if changed:
+        write(project_dir, doc)
 
 
 def migrate(project_dir: Path) -> bool:
