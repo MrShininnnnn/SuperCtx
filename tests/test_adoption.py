@@ -185,6 +185,74 @@ def test_a_handwritten_file_replacing_a_published_link_is_never_adopted(tmp_path
     assert snapshot(project) == before
 
 
+def _interrupt_before_publish(project: Path, monkeypatch) -> None:
+    monkeypatch.setattr(init_cmd, "_publish", lambda *a, **k: (_ for _ in ()).throw(Crash()))
+    with pytest.raises(Crash):
+        init_cmd.run(project)
+    monkeypatch.undo()
+
+
+def _edit_rule(p: Path) -> None:
+    (p / ".claude/rules/python.md").write_text(RULE + "\nEdited after the interruption.\n", encoding="utf-8")
+
+
+def _edit_skill_file(p: Path) -> None:
+    (p / ".claude/skills/review/references/guide.md").write_text(GUIDE + "Edited.\n", encoding="utf-8")
+
+
+def _add_skill_file(p: Path) -> None:
+    write(p, ".claude/skills/review/references/extra.md", "New file.\n")
+
+
+def _chmod_skill_script(p: Path) -> None:
+    (p / ".claude/skills/review/scripts/run.sh").chmod(0o644)
+
+
+@pytest.mark.parametrize("edit,path", [
+    (_edit_rule, ".claude/rules/python.md"),
+    (_edit_skill_file, ".claude/skills/review"),
+    (_add_skill_file, ".claude/skills/review"),
+    (_chmod_skill_script, ".claude/skills/review"),
+])
+def test_an_interrupted_setup_does_not_adopt_a_native_edited_since_backup(tmp_path, monkeypatch, edit, path):
+    project = happy_repo(tmp_path)
+    _interrupt_before_publish(project, monkeypatch)
+    edit(project)
+    native_before = _native_snapshot(project, path)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": path, "reason": "native_edited"} in result["unresolved"]
+    assert _native_snapshot(project, path) == native_before
+    canonical = path.replace(".claude/", ".ctx/", 1)
+    assert not os.path.lexists(project / canonical)
+    # Unchanged resources from the same interrupted setup still resume.
+    assert shim.is_generated_pointer_file(project, "CLAUDE.md")
+    other = ({".claude/rules/python.md", ".claude/skills/review"} - {path}).pop()
+    assert (project / other).is_symlink()
+
+
+def _native_snapshot(project: Path, rel: str):
+    path = project / rel
+    if path.is_dir() and not path.is_symlink():
+        return snapshot(path)
+    return (path.is_symlink(), stat.S_IMODE(os.lstat(path).st_mode), path.read_bytes(), os.lstat(path).st_mtime_ns)
+
+
+def test_an_interrupted_setup_with_a_missing_backup_is_not_resumed(tmp_path, monkeypatch):
+    import shutil
+    project = happy_repo(tmp_path)
+    _interrupt_before_publish(project, monkeypatch)
+    shutil.rmtree(core.sources_dir(project) / ".claude/skills/review")
+    native_before = _native_snapshot(project, ".claude/skills/review")
+
+    result = sync_cmd.run(project)
+
+    assert {"path": ".claude/skills/review", "reason": "native_edited"} in result["unresolved"]
+    assert _native_snapshot(project, ".claude/skills/review") == native_before
+    assert not os.path.lexists(project / ".ctx/skills/review")
+
+
 def test_setup_records_publication_and_a_crash_before_recording_is_resumed(tmp_path, monkeypatch):
     project = happy_repo(tmp_path)
     monkeypatch.setattr(manifest, "mark_published", lambda *a, **k: (_ for _ in ()).throw(Crash()))

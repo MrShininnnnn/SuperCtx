@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 from pathlib import Path
 
 from . import core, registry
@@ -88,12 +89,46 @@ def backup(project_dir: Path, native: str, dest_root: Path) -> str:
     return f"{core.CTX_DIRNAME}/{core.SOURCES_DIRNAME}/{native}"
 
 
+def _tree(path: Path) -> dict | None:
+    """A file or folder as {relative path: (kind, executable bits, bytes or link target)}."""
+    def entry(p: Path) -> tuple:
+        if p.is_symlink():
+            return ("link", os.readlink(p))
+        if p.is_dir():
+            return ("dir",)
+        return ("file", stat.S_IMODE(os.lstat(p).st_mode) & 0o111, p.read_bytes())
+
+    if not os.path.lexists(path):
+        return None
+    if path.is_symlink() or not path.is_dir():
+        return {".": entry(path)}
+    tree = {".": ("dir",)}
+    for dirpath, dirnames, filenames in os.walk(path):
+        for name in dirnames + filenames:
+            item = Path(dirpath) / name
+            tree[item.relative_to(path).as_posix()] = entry(item)
+    return tree
+
+
+def matches_backup(project_dir: Path, native: str) -> bool:
+    """True only if the native resource is identical to its backup: same paths, bytes,
+    and executable bits. A missing backup or a failed comparison is not a match."""
+    root = Path(project_dir).resolve()
+    try:
+        backup = _tree(core.sources_dir(root) / native)
+        return backup is not None and _tree(root / native) == backup
+    except OSError:
+        return False
+
+
 def link_state(project_dir: Path, native: str, canonical: str, published: bool = True) -> str:
     """healthy, missing (link absent), pending (resource not moved yet), or a conflict reason.
 
-    pending is only possible before the native's first publication is recorded. After
-    that, a real file or folder at the native path with no canonical copy is someone
-    else's content, never a resource to adopt, so it is canonical_missing.
+    pending is only possible before the native's first publication is recorded, and only
+    while the native is still identical to the backup setup took; anything changed since
+    is native_edited. After publication, a real file or folder at the native path with
+    no canonical copy is someone else's content, never a resource to adopt, so it is
+    canonical_missing.
     """
     root = Path(project_dir).resolve()
     if not (_no_symlinked_parent(root, native) and _no_symlinked_parent(root, canonical)):
@@ -109,7 +144,9 @@ def link_state(project_dir: Path, native: str, canonical: str, published: bool =
     if os.path.lexists(nat):
         if has_canonical:
             return "native_replaced"
-        return "canonical_missing" if published else "pending"
+        if published:
+            return "canonical_missing"
+        return "pending" if matches_backup(root, native) else "native_edited"
     return "missing" if has_canonical else "canonical_missing"
 
 

@@ -76,13 +76,14 @@ Running `/superctx:sync` in a repository without `.ctx/` is the decision to set 
 2. Build the new `.ctx/` (backups, hub, manifest, sentinel) in a staging directory inside the repository, then install it with one rename. A failure up to this point leaves the repository unchanged; a staging directory left by a crash is removed by the next run.
 3. Publish each native: write the pointer, or move the rule or skill to its canonical path and create the link.
 
-Setup and `add` record each new native with `published = false`, publish it, and then record it as published. Every publish step can be repeated, so a sync after an interruption finishes the job and records it. The flag is what lets sync tell finishing an adoption from inspecting something it already published: only an unpublished native may have its original bytes replaced by a pointer, or be moved into `.ctx/`. Natives migrated from v0.1.x are published. A linked native is in one of these states:
+Setup and `add` record each new native with `published = false`, publish it, and then record it as published. Every publish step can be repeated, so a sync after an interruption finishes the job and records it. The flag is what lets sync tell finishing an adoption from inspecting something it already published: only an unpublished native may have its original bytes replaced by a pointer, or be moved into `.ctx/`, and only while it is identical to the backup setup took (same paths, bytes, and executable bits); anything changed since stays in place as `native_edited`. Natives migrated from v0.1.x are published. A linked native is in one of these states:
 
 | State | Native path | Canonical path | Sync |
 |---|---|---|---|
 | healthy | symlink to the canonical path | present | — |
 | missing | absent | present | create the link |
-| pending (unpublished only) | the original, not yet moved | absent | move it, then create the link |
+| pending (unpublished only) | the original, identical to its backup | absent | move it, then create the link |
+| `native_edited` (unpublished only) | differs from its backup, or no backup | absent | report |
 | `link_retargeted` | symlink elsewhere | any | report |
 | `native_replaced` | a real file or folder | present | report |
 | `canonical_missing` | absent, a symlink, or (once published) a real file or folder | absent | report |
