@@ -503,6 +503,68 @@ def test_cursor_rules_are_linked_byte_for_byte_from_their_own_canonical_folder(t
     assert sync_cmd.run(project)["mutated"] is False
 
 
+def test_a_reference_that_reaches_outside_the_rules_folder_resolves_from_both_locations(tmp_path):
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/python.mdc", CURSOR_RULE)
+    write(project, "docs/guide.md", "# Guide\n")
+
+    result = sync_cmd.run(project)
+
+    assert ".cursor/rules/python.mdc" in result["init_result"]["linked"]
+    for folder in (".cursor/rules", ".ctx/cursor-rules"):
+        assert (project / folder / "../../docs/guide.md").resolve() == (project / "docs/guide.md").resolve()
+
+
+@pytest.mark.parametrize("native, reference, sibling", [
+    (".cursor/rules/review.mdc", "[guide](guide.md)", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "![diagram](./img/flow.png)", ".cursor/rules/img/flow.png"),
+    (".claude/rules/review.md", "See [the guide](guide.md#setup).", ".claude/rules/guide.md"),
+    (".claude/rules/review.md", "@guide.md", ".claude/rules/guide.md"),
+])
+def test_a_rule_whose_local_reference_would_break_is_left_in_place(tmp_path, native, reference, sibling):
+    project = happy_repo(tmp_path)
+    write(project, native, f"Follow this.\n\n{reference}\n")
+    write(project, sibling, "# Guide\n")
+    before = (project / native).read_bytes()
+
+    result = sync_cmd.run(project)
+
+    assert {"path": native, "type": "rule", "reason": "breaks_reference"} in result["init_result"]["left_in_place"]
+    assert native not in result["init_result"]["linked"]
+    assert not os.path.islink(project / native) and (project / native).read_bytes() == before
+    assert not os.path.lexists(core.sources_dir(project) / native)
+    assert result["final_state"] == "healthy"
+    # The rest of the one-step setup still happens, and the rule stays reported.
+    assert ".claude/rules/python.md" in result["init_result"]["linked"]
+    assert {"path": native, "type": "rule", "reason": "breaks_reference"} in sync_cmd.run(project)["left_in_place"]
+
+
+def test_add_refuses_a_rule_whose_local_reference_would_break(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".cursor/rules/review.mdc", "[guide](guide.md)\n")
+    write(project, ".cursor/rules/guide.md", "# Guide\n")
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="breaks_reference"):
+        add_cmd.run(project, ".cursor/rules/review.mdc")
+    assert snapshot(project) == before
+
+
+def test_references_that_cannot_break_do_not_block_adoption(tmp_path):
+    project = happy_repo(tmp_path)
+    text = (
+        "[site](https://example.com/guide.md) [mail](mailto:a@b.c) [top](#rules) [abs](/docs/guide.md)\n"
+        "[missing](nothing-here.md) Use @pytest.fixture and email me at dev@example.com.\n"
+    )
+    write(project, ".cursor/rules/python.mdc", text)
+    write(project, ".claude/rules/style.md", text)
+
+    result = sync_cmd.run(project)
+
+    assert {".cursor/rules/python.mdc", ".claude/rules/style.md"} <= set(result["init_result"]["linked"])
+
+
 def test_every_published_link_is_relative_and_resolves_inside_the_repository(tmp_path):
     project = happy_repo(tmp_path)
     write(project, ".cursor/rules/python.mdc", CURSOR_RULE)

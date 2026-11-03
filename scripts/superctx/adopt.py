@@ -8,6 +8,7 @@ finished by the next sync. See architecture/v2-manifest-and-ownership.md.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
 from pathlib import Path
@@ -25,6 +26,37 @@ def _no_symlinked_parent(root: Path, rel: str) -> bool:
         return parent.resolve() == parent
     except (OSError, RuntimeError):
         return False
+
+
+# Markdown link or image targets, and @path imports (Claude Code resolves these relative
+# to the file that contains them).
+_LINK = re.compile(r"\]\(\s*<?([^)\s>]+)")
+_IMPORT = re.compile(r"(?:^|\s)@([^\s`]+)")
+
+
+def breaks_reference(project_dir: Path, native: str, canonical: str) -> bool:
+    """True if a relative reference in the rule reaches an existing file from the native
+    path but would reach a different path once the rule is read from its canonical path.
+
+    References that leave both folders (like ../../docs/guide.md) resolve the same from
+    either path because canonical paths keep the native depth; references to siblings in
+    the rules folder do not.
+    """
+    root = Path(project_dir)
+    try:
+        text = (root / native).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return True
+    native_dir, canonical_dir = os.path.dirname(native), os.path.dirname(canonical)
+    for ref in _LINK.findall(text) + _IMPORT.findall(text):
+        ref = ref.split("#", 1)[0]
+        if not ref:  # a link to a heading in the rule itself
+            continue
+        from_native = os.path.normpath(os.path.join(native_dir, ref))
+        if (os.path.normpath(os.path.join(canonical_dir, ref)) != from_native
+                and os.path.lexists(root / from_native)):
+            return True
+    return False
 
 
 def link_target(native: str, canonical: str) -> str:
@@ -58,6 +90,8 @@ def plan(project_dir: Path, doc: dict | None = None) -> tuple[list[dict], list[d
                 reason = "name_collision"
             elif not all(_no_symlinked_parent(root, p) for p in (c["path"], c["canonical"], backup)):
                 reason = "unsafe_path"
+            elif c["type"] == "rule" and breaks_reference(root, c["path"], c["canonical"]):
+                reason = "breaks_reference"
             elif os.path.lexists(root / c["canonical"]):
                 reason = "canonical_exists"
             elif os.path.lexists(root / backup):
