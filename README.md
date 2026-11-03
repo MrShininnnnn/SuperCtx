@@ -29,7 +29,7 @@ GEMINI.md               # generated shim
 
 Original instruction files are backed up under `.ctx/sources/` before SuperCtx replaces live instruction files with shims.
 
-Supported rules and skills (currently Claude Code's `.claude/rules/` and `.claude/skills/`) are moved into `.ctx/` and linked back to their original paths, so the tool keeps loading them. See [architecture/compatibility.md](architecture/compatibility.md).
+Supported rules and skills (currently Claude Code's `.claude/rules/` and `.claude/skills/`, and Cursor's `.cursor/rules/`) are moved into `.ctx/` and linked back to their original paths, so the tool keeps loading them. See [architecture/compatibility.md](architecture/compatibility.md).
 
 ## Install
 

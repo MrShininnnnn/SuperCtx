@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from superctx import add as add_cmd, adopt, core, init as init_cmd, manifest, shim, sync as sync_cmd
+from superctx import add as add_cmd, adopt, core, init as init_cmd, manifest, registry, shim, sync as sync_cmd
 from test_v2_migration_safety import snapshot
 
 CLAUDE = "# Claude\n\nRun the tests before committing.\n"
@@ -353,7 +353,13 @@ def test_link_conflicts_are_reported_without_writing(tmp_path, damage, path, rea
 
 # --- left in place ----------------------------------------------------------
 
-def test_incompatible_resources_are_left_in_place_with_a_reason(tmp_path):
+def test_incompatible_resources_are_left_in_place_with_a_reason(tmp_path, monkeypatch):
+    # A rule folder whose link behavior has not been verified with the real tool.
+    convs = registry.load_conventions()
+    for conv in convs:
+        if conv["path"] == ".cursor/rules/":
+            del conv["publish"]
+    monkeypatch.setattr(registry, "load_conventions", lambda path=None: convs)
     project = happy_repo(tmp_path)
     write(project, ".cursor/rules/style.mdc", "---\nglobs: src/**\n---\nStyle.\n")
     write(project, ".claude/skills/notes/README.md", "no SKILL.md here\n")
@@ -463,6 +469,78 @@ def test_sync_resumes_an_interrupted_setup(tmp_path, monkeypatch, stage):
     assert result["final_state"] == "healthy", result
     assert snapshot(project, times=False) == expected
     assert all(n.get("published", True) for n in manifest.load_v2(project)["natives"])
+
+
+# --- Cursor rules -----------------------------------------------------------
+
+CURSOR_RULE = "---\ndescription:\nglobs: src/**/*.py\nalwaysApply: false\n---\n\nSee [the guide](../../docs/guide.md).\n"
+
+
+def test_cursor_rules_are_linked_byte_for_byte_from_their_own_canonical_folder(tmp_path):
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/python.mdc", CURSOR_RULE)
+    write(project, ".cursor/rules/frontend/components.mdc", CURSOR_RULE)
+
+    result = sync_cmd.run(project)
+
+    assert result["final_state"] == "healthy"
+    assert sorted(result["init_result"]["linked"]) == [
+        ".claude/rules/python.md", ".claude/skills/review",
+        ".cursor/rules/frontend/components.mdc", ".cursor/rules/python.mdc",
+    ]
+    assert os.readlink(project / ".cursor/rules/python.mdc") == "../../.ctx/cursor-rules/python.mdc"
+    assert os.readlink(project / ".cursor/rules/frontend/components.mdc") == "../../../.ctx/cursor-rules/frontend/components.mdc"
+    for rel in (".cursor/rules/python.mdc", ".cursor/rules/frontend/components.mdc"):
+        # Activation metadata and relative references are untouched: no conversion happens.
+        assert (project / rel).read_text(encoding="utf-8") == CURSOR_RULE
+        assert (core.sources_dir(project) / rel).read_text(encoding="utf-8") == CURSOR_RULE
+    doc = manifest.load_v2(project)
+    assert {(r["id"], r["canonical"]) for r in doc["resources"] if r["type"] == "rule"} == {
+        ("rule-python", ".ctx/rules/python.md"),
+        ("cursor-rule-python", ".ctx/cursor-rules/python.mdc"),
+        ("cursor-rule-frontend-components", ".ctx/cursor-rules/frontend/components.mdc"),
+    }
+    assert sync_cmd.run(project)["mutated"] is False
+
+
+def test_every_published_link_is_relative_and_resolves_inside_the_repository(tmp_path):
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/python.mdc", CURSOR_RULE)
+    write(project, ".cursor/rules/frontend/components.mdc", CURSOR_RULE)
+    sync_cmd.run(project)
+
+    links = [n["path"] for n in manifest.load_v2(project)["natives"] if n["mode"] == "link"]
+    assert len(links) == 4
+    root = project.resolve()
+    for rel in links:
+        target = os.readlink(project / rel)
+        assert not os.path.isabs(target)
+        resolved = (project / rel).resolve()
+        assert resolved.is_relative_to(root / ".ctx") and resolved.exists()
+
+
+def test_a_md_file_in_cursor_rules_is_not_treated_as_a_rule(tmp_path):
+    # Cursor ignores .md files in .cursor/rules, so they are not rules SuperCtx manages.
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/notes.md", "Not a Cursor rule.\n")
+
+    result = sync_cmd.run(project)
+
+    assert ".cursor/rules/notes.md" not in result["init_result"]["linked"]
+    assert all(i["path"] != ".cursor/rules/notes.md" for i in result["init_result"]["left_in_place"])
+    assert not os.path.islink(project / ".cursor/rules/notes.md")
+    assert (project / ".cursor/rules/notes.md").read_text(encoding="utf-8") == "Not a Cursor rule.\n"
+
+
+def test_add_adopts_a_new_cursor_rule_in_an_existing_workspace(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".cursor/rules/python.mdc", CURSOR_RULE)
+    assert ".cursor/rules/python.mdc" in sync_cmd.run(project)["candidates"]
+
+    assert add_cmd.run(project, ".cursor/rules/python.mdc").status == "added"
+    assert os.readlink(project / ".cursor/rules/python.mdc") == "../../.ctx/cursor-rules/python.mdc"
+    assert sync_cmd.run(project)["mutated"] is False
 
 
 # --- add --------------------------------------------------------------------

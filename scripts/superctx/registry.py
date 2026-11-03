@@ -165,10 +165,10 @@ def resource_conventions(convs: list[dict] | None = None) -> list[dict]:
     return [c for c in convs if c.get("kind") in RESOURCE_KINDS]
 
 
-def _resource_id(type_: str, rel: str, suffixes: list[str]) -> str:
+def _resource_id(prefix: str, rel: str, suffixes: list[str]) -> str:
     stem = next((rel[: -len(s)] for s in suffixes if rel.endswith(s)), rel)
     slug = re.sub(r"[^a-z0-9._-]+", "-", stem.lower()).strip("-.")
-    return f"{type_}-{slug}"
+    return f"{prefix}-{slug}"
 
 
 def detect_resources(project_dir: Path) -> list[dict]:
@@ -212,7 +212,7 @@ def detect_resources(project_dir: Path) -> list[dict]:
                 "type": type_,
                 "path": f"{base_rel}/{inner}",
                 "canonical": f"{conv['canonical'].rstrip('/')}/{inner}",
-                "id": _resource_id(type_, inner, suffixes),
+                "id": _resource_id(conv.get("id_prefix", type_), inner, suffixes),
                 "tools": conv.get("tools", []),
                 "reason": reason,
             })

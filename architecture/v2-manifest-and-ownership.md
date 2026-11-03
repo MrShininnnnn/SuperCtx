@@ -17,7 +17,7 @@ Released v0.1.x clients must not modify a v0.2 workspace. The migration-safety g
 | `.ctx/manifest.toml` | compatibility sentinel; never a v2 manifest |
 | `.ctx/manifest.v1.toml` | v1 manifest copied at migration, for recovery |
 | `.ctx/sources/<native path>` | original content of an adopted native path (inactive backup) |
-| `.ctx/rules/`, `.ctx/skills/` | canonical rules and skills, linked from their native paths (created only when one is adopted) |
+| `.ctx/rules/`, `.ctx/cursor-rules/`, `.ctx/skills/` | canonical rules (Claude Code, Cursor) and skills, linked from their native paths (created only when one is adopted) |
 
 The sentinel is valid TOML whose `files` key is a string. Every 0.1.x loader requires an array there, raises `SchemaError`, and takes its no-write branch. Its `migration` key is `"in-progress"` or `"complete"`.
 
@@ -87,6 +87,8 @@ Setup and `add` record each new native with `published = false`, publish it, and
 | `link_retargeted` | symlink elsewhere | any | report |
 | `native_replaced` | a real file or folder | present | report |
 | `canonical_missing` | absent, a symlink, or (once published) a real file or folder | absent | report |
+
+Rules are never converted between tools. Claude Code scopes a rule with `paths:` in a `.md` file and Cursor with `globs:` or `alwaysApply` in a `.mdc` file, and some Cursor rule types have no Claude Code equivalent. So each tool's rules keep their own canonical folder (`.ctx/rules/`, `.ctx/cursor-rules/`) and their own id prefix (`rule-`, `cursor-rule-`), and are linked byte for byte. Activation conditions, directory scope, metadata, and relative references are therefore unchanged. A rule that should apply in both tools still exists once per tool.
 
 In an existing workspace, newly discovered resources are listed as candidates and adopted with `/superctx:add <path>`. Resources that cannot be adopted stay where they are, and every sync reports why: `not_verified` (no verified link behavior for the tool), `already_a_symlink`, `contains_symlink` (a link inside a skill could break when it moves), `no_skill_md`, `name_collision` (two resources would share a name or canonical path), `canonical_exists`, `backup_exists`, or `unsafe_path`.
 

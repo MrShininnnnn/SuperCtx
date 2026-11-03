@@ -1,6 +1,6 @@
 ---
 name: superctx:add
-description: Use when the user wants to start tracking a local custom instruction file (like .agy/ANTIGRAVITY.md or .github/copilot-instructions.md), a rule (like .claude/rules/python.md), or a skill folder (like .claude/skills/review) in SuperCtx. Requires a path argument.
+description: Use when the user wants to start tracking a local custom instruction file (like .agy/ANTIGRAVITY.md or .github/copilot-instructions.md), a rule (like .claude/rules/python.md or .cursor/rules/python.mdc), or a skill folder (like .claude/skills/review) in SuperCtx. Requires a path argument.
 ---
 
 # SuperCtx Add
