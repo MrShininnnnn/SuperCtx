@@ -12,6 +12,7 @@ import re
 import shutil
 import stat
 from pathlib import Path
+from urllib.parse import unquote
 
 from . import core, registry
 
@@ -28,10 +29,28 @@ def _no_symlinked_parent(root: Path, rel: str) -> bool:
         return False
 
 
-# Markdown link or image targets, and @path imports (Claude Code resolves these relative
-# to the file that contains them).
-_LINK = re.compile(r"\]\(\s*<?([^)\s>]+)")
-_IMPORT = re.compile(r"(?:^|\s)@([^\s`]+)")
+# Where a rule can name another file. A destination is either <...> (may contain spaces)
+# or a run without spaces in which parentheses are balanced one level deep.
+_DEST = r"(?:<([^<>\n]*)>|((?:[^\s()<]|\([^\s()]*\))+))"
+_REFERENCES = [
+    re.compile(r"\]\(\s*" + _DEST),                         # [text](dest), ![alt](dest)
+    re.compile(r"^ {0,3}\[[^\]\n]+\]:[ \t]*" + _DEST, re.M),  # [label]: dest
+    re.compile(r"""\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')"""),  # HTML
+    re.compile(r"(?:^|\s)@([^\s`]+)"),  # @path imports, resolved relative to the file
+]
+_ESCAPED = re.compile(r"\\([!-/:-@\[-`{-~])")
+
+
+def _destinations(text: str) -> set[str]:
+    """Every file path a rule may refer to, in each spelling a reader could resolve."""
+    found = set()
+    for pattern in _REFERENCES:
+        for match in pattern.finditer(text):
+            dest = next(g for g in match.groups() if g is not None).split("#", 1)[0]
+            unescaped = _ESCAPED.sub(r"\1", dest)
+            found |= {dest, unescaped, unquote(unescaped)}
+    found.discard("")  # a link to a heading in the rule itself
+    return found
 
 
 def breaks_reference(project_dir: Path, native: str, canonical: str) -> bool:
@@ -48,10 +67,7 @@ def breaks_reference(project_dir: Path, native: str, canonical: str) -> bool:
     except OSError:
         return True
     native_dir, canonical_dir = os.path.dirname(native), os.path.dirname(canonical)
-    for ref in _LINK.findall(text) + _IMPORT.findall(text):
-        ref = ref.split("#", 1)[0]
-        if not ref:  # a link to a heading in the rule itself
-            continue
+    for ref in _destinations(text):
         from_native = os.path.normpath(os.path.join(native_dir, ref))
         if (os.path.normpath(os.path.join(canonical_dir, ref)) != from_native
                 and os.path.lexists(root / from_native)):

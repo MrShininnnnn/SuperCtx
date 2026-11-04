@@ -506,13 +506,17 @@ def test_cursor_rules_are_linked_byte_for_byte_from_their_own_canonical_folder(t
 def test_a_reference_that_reaches_outside_the_rules_folder_resolves_from_both_locations(tmp_path):
     project = happy_repo(tmp_path)
     write(project, ".cursor/rules/python.mdc", CURSOR_RULE)
+    write(project, ".cursor/rules/team.mdc",
+          "[a](<../../docs/team guide.md>) [b](../../docs/team%20guide.md) [c][ref]\n\n[ref]: ../../docs/guide.md\n")
     write(project, "docs/guide.md", "# Guide\n")
+    write(project, "docs/team guide.md", "# Team guide\n")
 
     result = sync_cmd.run(project)
 
-    assert ".cursor/rules/python.mdc" in result["init_result"]["linked"]
+    assert {".cursor/rules/python.mdc", ".cursor/rules/team.mdc"} <= set(result["init_result"]["linked"])
     for folder in (".cursor/rules", ".ctx/cursor-rules"):
-        assert (project / folder / "../../docs/guide.md").resolve() == (project / "docs/guide.md").resolve()
+        for ref in ("../../docs/guide.md", "../../docs/team guide.md"):
+            assert (project / folder / ref).resolve() == (project / ref[6:]).resolve()
 
 
 @pytest.mark.parametrize("native, reference, sibling", [
@@ -520,6 +524,14 @@ def test_a_reference_that_reaches_outside_the_rules_folder_resolves_from_both_lo
     (".cursor/rules/review.mdc", "![diagram](./img/flow.png)", ".cursor/rules/img/flow.png"),
     (".claude/rules/review.md", "See [the guide](guide.md#setup).", ".claude/rules/guide.md"),
     (".claude/rules/review.md", "@guide.md", ".claude/rules/guide.md"),
+    (".cursor/rules/review.mdc", "[guide](<team guide.md>)", ".cursor/rules/team guide.md"),
+    (".cursor/rules/review.mdc", "[guide](team%20guide.md)", ".cursor/rules/team guide.md"),
+    (".cursor/rules/review.mdc", "[guide][ref]\n\n[ref]: guide.md", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "[guide][ref]\n\n  [ref]: <team guide.md> \"Team\"", ".cursor/rules/team guide.md"),
+    (".cursor/rules/review.mdc", "[guide](guide(v2).md \"Guide\")", ".cursor/rules/guide(v2).md"),
+    (".cursor/rules/review.mdc", "[guide](team\\_guide.md)", ".cursor/rules/team_guide.md"),
+    (".cursor/rules/review.mdc", '<a href="guide.md">guide</a>', ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "<img src='img/flow.png'>", ".cursor/rules/img/flow.png"),
 ])
 def test_a_rule_whose_local_reference_would_break_is_left_in_place(tmp_path, native, reference, sibling):
     project = happy_repo(tmp_path)
