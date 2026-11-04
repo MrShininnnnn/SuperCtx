@@ -532,6 +532,9 @@ def test_a_reference_that_reaches_outside_the_rules_folder_resolves_from_both_lo
     (".cursor/rules/review.mdc", "[guide](team\\_guide.md)", ".cursor/rules/team_guide.md"),
     (".cursor/rules/review.mdc", '<a href="guide.md">guide</a>', ".cursor/rules/guide.md"),
     (".cursor/rules/review.mdc", "<img src='img/flow.png'>", ".cursor/rules/img/flow.png"),
+    (".claude/rules/review.md", "@team\\ guide.txt", ".claude/rules/team guide.txt"),
+    (".cursor/rules/review.mdc", "[guide][ref]\n\n[ref]:\n    guide.md", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "<a href=guide.md>guide</a>", ".cursor/rules/guide.md"),
 ])
 def test_a_rule_whose_local_reference_would_break_is_left_in_place(tmp_path, native, reference, sibling):
     project = happy_repo(tmp_path)
@@ -549,6 +552,40 @@ def test_a_rule_whose_local_reference_would_break_is_left_in_place(tmp_path, nat
     # The rest of the one-step setup still happens, and the rule stays reported.
     assert ".claude/rules/python.md" in result["init_result"]["linked"]
     assert {"path": native, "type": "rule", "reason": "breaks_reference"} in sync_cmd.run(project)["left_in_place"]
+
+
+@pytest.mark.parametrize("reference", [
+    "[guide](<team guide.md",             # angle bracket never closed
+    "[guide](a(b(c)).md)",                # parentheses nested deeper than the guard parses
+    "[guide][ref]\n\n[ref]:\n\n guide.md",  # definition whose destination is not found
+    "<a href=>guide</a>",                 # attribute with no value
+])
+def test_a_rule_with_a_reference_the_guard_cannot_resolve_is_left_in_place(tmp_path, reference):
+    # Uncertainty preserves the rule: a recognized link or import whose complete
+    # destination cannot be determined could be broken by the move.
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/review.mdc", f"Follow this.\n\n{reference}\n")
+    before = (project / ".cursor/rules/review.mdc").read_bytes()
+
+    result = sync_cmd.run(project)
+
+    assert {"path": ".cursor/rules/review.mdc", "type": "rule", "reason": "unclear_reference"} in \
+        result["init_result"]["left_in_place"]
+    assert not os.path.islink(project / ".cursor/rules/review.mdc")
+    assert (project / ".cursor/rules/review.mdc").read_bytes() == before
+    assert ".claude/rules/python.md" in result["init_result"]["linked"]
+
+
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions as non-root")
+def test_a_rule_that_cannot_be_read_is_treated_as_unclear(tmp_path):
+    project = tmp_path / "repo"
+    write(project, ".cursor/rules/review.mdc", "[guide](guide.md)\n")
+    (project / ".cursor/rules/review.mdc").chmod(0)
+    try:
+        assert adopt.reference_problem(project, ".cursor/rules/review.mdc", ".ctx/cursor-rules/review.mdc") \
+            == "unclear_reference"
+    finally:
+        (project / ".cursor/rules/review.mdc").chmod(0o644)
 
 
 def test_add_refuses_a_rule_whose_local_reference_would_break(tmp_path):

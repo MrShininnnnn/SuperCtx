@@ -29,50 +29,71 @@ def _no_symlinked_parent(root: Path, rel: str) -> bool:
         return False
 
 
-# Where a rule can name another file. A destination is either <...> (may contain spaces)
-# or a run without spaces in which parentheses are balanced one level deep.
-_DEST = r"(?:<([^<>\n]*)>|((?:[^\s()<]|\([^\s()]*\))+))"
+# Where a rule can name another file. Each kind has an anchor that marks a reference
+# and a full pattern for its destination. An anchor the full pattern cannot account for
+# is a reference whose destination is unknown. A Markdown destination is either <...>
+# (may contain spaces) or a run without spaces in which parentheses are balanced one
+# level deep; it must end the destination (`(?=\s|\))` stops a partial match).
+_DEST = r"(?:<([^<>\n]*)>|((?:[^\s()<\\]|\\.|\([^\s()]*\))+))"
 _REFERENCES = [
-    re.compile(r"\]\(\s*" + _DEST),                         # [text](dest), ![alt](dest)
-    re.compile(r"^ {0,3}\[[^\]\n]+\]:[ \t]*" + _DEST, re.M),  # [label]: dest
-    re.compile(r"""\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')"""),  # HTML
-    re.compile(r"(?:^|\s)@([^\s`]+)"),  # @path imports, resolved relative to the file
+    # [text](dest), ![alt](dest), [text]()
+    (re.compile(r"\]\("), re.compile(r"(?P<a>\]\()\s*(?:" + _DEST + r")?(?=\s|\))")),
+    # [label]: dest, with the destination on the same or the next line
+    (re.compile(r"\]:"), re.compile(r"^ {0,3}\[[^\]]+(?P<a>\]:)[ \t]*(?:\n[ \t]*)?" + _DEST + r"(?=\s|$)", re.M)),
+    # HTML attributes, quoted or not
+    (re.compile(r"\b(?:href|src)\s*="),
+     re.compile(r"""\b(?P<a>href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""")),
+    # @path imports, resolved relative to the file; `\ ` escapes a space
+    (None, re.compile(r"(?:^|\s)@((?:\\.|[^\s\\`])+)")),
 ]
-_ESCAPED = re.compile(r"\\([!-/:-@\[-`{-~])")
+_ESCAPE = re.compile(r"\\(.)")
 
 
-def _destinations(text: str) -> set[str]:
-    """Every file path a rule may refer to, in each spelling a reader could resolve."""
+def _destinations(text: str) -> set[str] | None:
+    """Every file path a rule may refer to, in each spelling a reader could resolve,
+    or None if a reference's destination cannot be determined."""
     found = set()
-    for pattern in _REFERENCES:
-        for match in pattern.finditer(text):
-            dest = next(g for g in match.groups() if g is not None).split("#", 1)[0]
-            unescaped = _ESCAPED.sub(r"\1", dest)
-            found |= {dest, unescaped, unquote(unescaped)}
-    found.discard("")  # a link to a heading in the rule itself
+    for anchor, pattern in _REFERENCES:
+        matches = list(pattern.finditer(text))
+        if anchor is not None:
+            parsed = {m.start("a") for m in matches}
+            if any(a.start() not in parsed for a in anchor.finditer(text)):
+                return None
+        for match in matches:
+            anchor_group = pattern.groupindex.get("a")
+            dest = next((g for i, g in enumerate(match.groups(), 1) if g is not None and i != anchor_group), "")
+            dest = dest.split("#", 1)[0]
+            for spelling in (dest, _ESCAPE.sub(r"\1", dest)):
+                found |= {spelling, unquote(spelling)}
+    found.discard("")  # a link to a heading in the rule itself, or an empty link
     return found
 
 
-def breaks_reference(project_dir: Path, native: str, canonical: str) -> bool:
-    """True if a relative reference in the rule reaches an existing file from the native
-    path but would reach a different path once the rule is read from its canonical path.
+def reference_problem(project_dir: Path, native: str, canonical: str) -> str | None:
+    """Why moving the rule could break a relative reference in it, or None.
 
-    References that leave both folders (like ../../docs/guide.md) resolve the same from
-    either path because canonical paths keep the native depth; references to siblings in
-    the rules folder do not.
+    breaks_reference: a reference reaches an existing file from the native path but
+    would reach a different path from the canonical one. References that leave both
+    folders (like ../../docs/guide.md) resolve the same from either path because
+    canonical paths keep the native depth; references to siblings do not.
+    unclear_reference: a reference's destination cannot be determined, so the rule
+    stays in place rather than risk breaking it.
     """
     root = Path(project_dir)
     try:
         text = (root / native).read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return True
+        return "unclear_reference"
+    refs = _destinations(text)
+    if refs is None:
+        return "unclear_reference"
     native_dir, canonical_dir = os.path.dirname(native), os.path.dirname(canonical)
-    for ref in _destinations(text):
+    for ref in refs:
         from_native = os.path.normpath(os.path.join(native_dir, ref))
         if (os.path.normpath(os.path.join(canonical_dir, ref)) != from_native
                 and os.path.lexists(root / from_native)):
-            return True
-    return False
+            return "breaks_reference"
+    return None
 
 
 def link_target(native: str, canonical: str) -> str:
@@ -106,8 +127,8 @@ def plan(project_dir: Path, doc: dict | None = None) -> tuple[list[dict], list[d
                 reason = "name_collision"
             elif not all(_no_symlinked_parent(root, p) for p in (c["path"], c["canonical"], backup)):
                 reason = "unsafe_path"
-            elif c["type"] == "rule" and breaks_reference(root, c["path"], c["canonical"]):
-                reason = "breaks_reference"
+            elif c["type"] == "rule" and (problem := reference_problem(root, c["path"], c["canonical"])):
+                reason = problem
             elif os.path.lexists(root / c["canonical"]):
                 reason = "canonical_exists"
             elif os.path.lexists(root / backup):
