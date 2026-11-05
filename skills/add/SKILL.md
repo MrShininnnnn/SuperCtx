@@ -1,13 +1,13 @@
 ---
 name: superctx:add
-description: Use when the user wants to start tracking a local custom instruction file (like .agy/ANTIGRAVITY.md or .github/copilot-instructions.md), a rule (like .claude/rules/python.md or .cursor/rules/python.mdc), or a skill folder (like .claude/skills/review, .cursor/skills/lint, or .grok/skills/deploy) in SuperCtx. Requires a path argument.
+description: Use when the user wants to start tracking a local custom instruction file (like .agy/ANTIGRAVITY.md or .github/copilot-instructions.md), a rule (like .claude/rules/python.md or .cursor/rules/python.mdc), a skill folder (like .claude/skills/review, .cursor/skills/lint, or .grok/skills/deploy), or a reference or planning folder (like docs/architecture or .planning) in SuperCtx. Requires a path argument.
 ---
 
 # SuperCtx Add
 
 Add a local candidate file to the SuperCtx manifest to begin tracking it.
 
-For a rule file or skill folder that sync lists as a candidate, `add` backs it up, moves it into `.ctx/`, and leaves a link at its original path so the tool keeps using it. If it cannot be adopted, the command names the reason (for example `canonical_exists` or `name_collision`) and changes nothing.
+For a rule file or skill folder that sync lists as a candidate, `add` backs it up, moves it into `.ctx/`, and leaves a link at its original path so the tool keeps using it. A folder (for example `docs/architecture`, or `.planning`, which sync lists as a candidate) is connected the same way as a whole, including nested files: it moves to `.ctx/` at the same depth when possible (`docs/architecture` → `.ctx/architecture`), and existing readers and writers keep using the original path. Folders are only ever connected with `add`, never by setup. If it cannot be adopted, the command names the reason (for example `canonical_exists` or `name_collision`) and changes nothing.
 
 If SuperCtx is not set up yet (no `.ctx/` directory exists), do not run this command first. Use `/superctx:sync` for the global setup/check/repair flow, then use `/superctx:add <path>` for targeted file connection after the shared context hub exists.
 

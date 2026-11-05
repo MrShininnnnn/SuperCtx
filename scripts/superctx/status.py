@@ -379,7 +379,7 @@ def detect_repo_state(project_dir: Path) -> dict:
             for cand in discovery.get(key, []):
                 if cand["path"] not in tracked:
                     untracked.append(cand["path"])
-        untracked += [c["path"] for c in adopt.plan(project_dir)[0] if c["path"] not in tracked]
+        untracked += [c["path"] for c in adopt.plan(project_dir, explicit=True)[0] if c["path"] not in tracked]
 
         if untracked:
             reasons.append("untracked_candidates_found")

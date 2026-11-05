@@ -157,10 +157,14 @@ def ask_claude(root: Path, prompt: str, tools: str) -> str:
     pytest.fail(f"claude produced no result (exit {proc.returncode}): {proc.stderr[-400:]}")
 
 
-def ask_cursor(root: Path, prompt: str) -> str:
-    """Run Cursor Agent read-only (ask mode) and return its final answer; fail unless it succeeded."""
+def ask_cursor(root: Path, prompt: str, write: bool = False) -> str:
+    """Run Cursor Agent and return its final answer; fail unless it succeeded.
+
+    Read-only (ask mode) unless `write` is set, which uses its default agent mode.
+    """
+    mode = [] if write else ["--mode", "ask"]
     proc = subprocess.run(
-        ["cursor-agent", "-p", prompt, "--model", CURSOR_MODEL, "--mode", "ask", "--trust",
+        ["cursor-agent", "-p", prompt, "--model", CURSOR_MODEL, *mode, "--trust",
          "--output-format", "json"],
         cwd=root, capture_output=True, text=True, timeout=300,
     )
@@ -301,3 +305,65 @@ def test_grok_ignores_a_claude_rule_scope(shared_repo):
     # but not their `paths:` scope, so the rule also applies to a non-matching file (the
     # same happens without SuperCtx). If this starts failing, Grok honors the scope now.
     assert "RULE-PY-5521" in ask_grok(shared_repo, RULE_PROMPT.format(f="docs/notes.md"))
+
+
+# --- planning and reference folders ------------------------------------------
+
+PROGRESS = ".planning/2026-11-04-demo/progress.md"
+
+
+@pytest.fixture(scope="module")
+def folders_repo(tmp_path_factory) -> Path:
+    """A .planning/ folder and a reference folder, connected with /superctx:add."""
+    root = tmp_path_factory.mktemp("real-agent-folders") / "repo"
+    set_up(root, {
+        "CLAUDE.md": "# Project\n\nKeep answers short.\n",
+        PROGRESS: "# Progress\n\n- step 1 done\n",
+        "docs/architecture/adr-1.md": "# ADR 1\n\nThe decision codeword is ADR-6620.\n",
+    })
+    for folder in (".planning", "docs/architecture"):
+        add = subprocess.run([sys.executable, "-m", "superctx", "add", folder, str(root)],
+                             env={**os.environ, "PYTHONPATH": str(ROOT / "scripts")}, capture_output=True, text=True)
+        assert add.returncode == 0, add.stdout + add.stderr
+    assert os.readlink(root / ".planning") == ".ctx/planning"
+    assert os.readlink(root / "docs/architecture") == "../.ctx/architecture"
+    return root
+
+
+def assert_progress_written_through_link(root: Path, line: str) -> None:
+    assert os.path.islink(root / ".planning"), "the planning link was replaced"
+    canonical = (root / ".ctx/planning/2026-11-04-demo/progress.md").read_text(encoding="utf-8")
+    assert line in canonical and "- step 1 done" in canonical, canonical
+
+
+UPDATE_PROMPT = (f"Append the line `{{line}}` at the end of {PROGRESS}, keeping its existing content. "
+                 "Do not create or change any other file. Reply DONE when finished.")
+
+
+@needs_claude
+def test_claude_updates_progress_through_the_planning_link(folders_repo):
+    line = "- step 2 done (claude)"
+    ask_claude(folders_repo, UPDATE_PROMPT.format(line=line), "Read,Edit,Write")
+    assert_progress_written_through_link(folders_repo, line)
+
+
+@needs_claude
+def test_claude_reads_a_reference_through_its_original_path(folders_repo):
+    answer = ask_claude(folders_repo, "Read docs/architecture/adr-1.md and reply with only its decision codeword.",
+                        "Read")
+    assert "ADR-6620" in answer, answer
+
+
+@needs_grok
+def test_grok_updates_progress_through_the_planning_link(folders_repo):
+    line = "- step 3 done (grok)"
+    ask_grok(folders_repo, UPDATE_PROMPT.format(line=line),
+             f"Read({folders_repo}/**)", f"Edit({folders_repo}/**)", f"Write({folders_repo}/**)")
+    assert_progress_written_through_link(folders_repo, line)
+
+
+@needs_cursor
+def test_cursor_updates_progress_through_the_planning_link(folders_repo):
+    line = "- step 4 done (cursor)"
+    ask_cursor(folders_repo, UPDATE_PROMPT.format(line=line), write=True)
+    assert_progress_written_through_link(folders_repo, line)

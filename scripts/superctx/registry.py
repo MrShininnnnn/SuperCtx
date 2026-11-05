@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import toml_compat
+from . import core, toml_compat
 
 
 @dataclass(frozen=True)
@@ -156,7 +156,10 @@ def detect_all(project_dir: Path) -> dict[str, list[dict]]:
     return res
 
 
-RESOURCE_KINDS = {"rules": "rule", "skills": "skill"}
+RESOURCE_KINDS = {"rules": "rule", "skills": "skill", "planning": "planning"}
+# Kinds whose convention names one whole folder. They are offered as candidates and
+# adopted only with /superctx:add, never by the one-step setup.
+FOLDER_KINDS = {"planning"}
 
 
 def resource_conventions(convs: list[dict] | None = None) -> list[dict]:
@@ -167,8 +170,59 @@ def resource_conventions(convs: list[dict] | None = None) -> list[dict]:
 
 def _resource_id(prefix: str, rel: str, suffixes: list[str]) -> str:
     stem = next((rel[: -len(s)] for s in suffixes if rel.endswith(s)), rel)
-    slug = re.sub(r"[^a-z0-9._-]+", "-", stem.lower()).strip("-.")
-    return f"{prefix}-{slug}"
+    return f"{prefix}-{_slug(stem)}"
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9._-]+", "-", text.lower()).strip("-.")
+
+
+def folder_canonical(rel: str) -> str:
+    """Where a connected folder lives under .ctx/: at the native depth when possible
+    (docs/architecture -> .ctx/architecture), else one level deeper (notes -> .ctx/notes)."""
+    parts = rel.split("/")
+    return f"{core.CTX_DIRNAME}/" + ("/".join(parts[1:]) if len(parts) > 1 else parts[0].lstrip(".") or parts[0])
+
+
+def _reserved_ctx_names(convs: list[dict]) -> set[str]:
+    """Top-level .ctx/ entries SuperCtx owns or gives to a convention."""
+    names = {core.HUB_NAME, core.V2_MANIFEST_NAME, core.MANIFEST_NAME, core.V1_BACKUP_NAME, ".gitignore",
+             core.SOURCES_DIRNAME}
+    return names | {c["canonical"].split("/")[1] for c in convs if c.get("canonical")}
+
+
+def _overlaps_convention(rel: str, convs: list[dict], own: str | None) -> bool:
+    """True if rel is, holds, or sits inside another convention's path."""
+    for conv in convs:
+        path = conv["path"].rstrip("/")
+        if path == own:
+            continue
+        if conv["kind"] in RESOURCE_KINDS:  # resources there are managed one by one
+            if rel == path or path.startswith(rel + "/") or rel.startswith(path + "/"):
+                return True
+        elif rel == path or path.startswith(rel + "/"):  # tool folders and instruction files
+            return True
+    return False
+
+
+def folder_candidate(project_dir: Path, rel: str, type_: str, tools: list[str] | None = None,
+                     convention: str | None = None) -> dict:
+    """A whole folder as one resource (reference, or planning under a planning convention)."""
+    convs = load_conventions()
+    path = Path(project_dir) / rel
+    canonical = folder_canonical(rel)
+    if path.is_symlink():
+        reason = "already_a_symlink"
+    elif _overlaps_convention(rel, convs, convention):
+        reason = "tool_folder"
+    elif canonical.split("/")[1] in _reserved_ctx_names(convs) and convention is None:
+        reason = "reserved_name"
+    elif any(p.is_symlink() for p in path.rglob("*")):
+        reason = "contains_symlink"
+    else:
+        reason = None
+    return {"type": type_, "path": rel, "canonical": canonical, "id": f"{type_}-{_slug(rel)}",
+            "tools": list(tools or []), "reason": reason, "explicit": True}
 
 
 def detect_resources(project_dir: Path) -> list[dict]:
@@ -185,6 +239,12 @@ def detect_resources(project_dir: Path) -> list[dict]:
         base_rel = conv["path"].rstrip("/")
         base = project_dir / base_rel
         if not base.is_dir():
+            continue
+        if conv["kind"] in FOLDER_KINDS:
+            cand = folder_candidate(project_dir, base_rel, type_, conv.get("tools", []), convention=base_rel)
+            if cand["reason"] is None and conv.get("publish") != "link":
+                cand["reason"] = "not_verified"
+            found.append(cand)
             continue
         suffixes = conv.get("suffixes", [])
         if conv["kind"] == "rules":

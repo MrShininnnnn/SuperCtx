@@ -81,6 +81,9 @@ def run(project_dir: Path) -> dict:
             left_in_place.append({"path": c["path"], "type": "instructions", "reason": "unsafe_path"})
     resources, left = adopt.plan(project_dir)
     left_in_place += left
+    if resources and not adopt.links_supported(project_dir):
+        left_in_place += [{"path": c["path"], "type": c["type"], "reason": "links_unsupported"} for c in resources]
+        resources = []
 
     # 2. Build the whole .ctx/ (backups, hub, manifest) in a staging directory and
     #    install it with one rename, so a failure here leaves the repository untouched.

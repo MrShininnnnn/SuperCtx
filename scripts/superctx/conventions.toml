@@ -111,6 +111,8 @@ note     = "UNVERIFIED — confirm against official Antigravity docs (.agents vs
 # `kind`:
 #   "rules"  — every file under `path` (recursively) ending in one of `suffixes` is one rule.
 #   "skills" — every direct subdirectory of `path` that contains SKILL.md is one skill.
+#   "planning" — `path` itself is one folder; offered as a candidate and connected only
+#               with /superctx:add (any other folder can be added as a reference).
 # `canonical` is where an adopted resource lives under .ctx/; it keeps the native
 # path's depth, so relative references resolve the same through the link or the target.
 # `id_prefix` (default: the resource type) starts each resource id, so rules that keep
@@ -160,6 +162,16 @@ tools             = ["Grok Build"]
 source            = "https://docs.x.ai/build/features/skills-plugins-marketplaces"
 verified          = "2026-11-04"
 verified_behavior = "Grok Build 1.0.70, macOS: a skill published as a relative directory symlink is invoked by name, runs its bundled script, and reads its bundled reference (tests/test_real_agents.py)."
+
+[[convention]]
+path              = ".planning/"
+kind              = "planning"
+canonical         = ".ctx/planning/"
+publish           = "link"
+tools             = ["planning-with-files"]
+source            = "https://github.com/OthmanAdi/planning-with-files/blob/master/skills/planning-with-files/SKILL.md"
+verified          = "2026-11-04"
+verified_behavior = "Offered as a candidate and connected only with /superctx:add: the whole folder moves to its canonical path with a relative directory symlink left behind, and reads and writes through the original path reach the canonical files (tests/test_real_agents.py)."
 
 [[convention]]
 path      = ".agents/skills/"
