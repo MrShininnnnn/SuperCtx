@@ -53,7 +53,15 @@ _REFERENCES = [
 _STARTS = re.compile(r"""\]\(|\]:|\b(?:href|src)\s*=|(?:^|(?<=\s))@|<""", re.I | re.M)
 _END = re.compile(r"""[\s)>"'`<]""")
 _SPACE = re.compile(r"\s*")
+# The scan reads at most _WINDOW characters of a line from each start. A destination
+# that may still be open where the window ends was not fully checked. What closes it
+# depends on how it opened: <...> after a link or definition may contain spaces and
+# closes at >; a quoted HTML value closes at its quote; an autolink closes at > or
+# whitespace; anything else closes at the first unescaped whitespace.
 _WINDOW = 512
+_CLOSE_ANGLE, _CLOSE_AUTOLINK = re.compile(r">"), re.compile(r"[\s>]")
+_CLOSE_QUOTE = {'"': re.compile('"'), "'": re.compile("'")}
+_CLOSE_BARE = re.compile(r"(?<!\\)\s")
 _ESCAPE = re.compile(r"\\(.)")
 # CommonMark decodes in one pass: a backslash escapes ASCII punctuation (so `\&amp;`
 # stays literal), and entities are replaced.
@@ -73,22 +81,37 @@ def _unclear(text: str) -> bool:
     return False
 
 
-def _candidates(text: str) -> set[str]:
-    """Every path a reference in the rule could name, whatever parser reads it.
+def _candidates(text: str) -> tuple[set[str], bool]:
+    """Every path a reference in the rule could name, whatever parser reads it, and
+    whether the scan window cut off a destination before it could close.
 
     Parsers disagree on details (which characters a backslash escapes, where an
     autolink ends), so instead of one grammar this takes, after every place a
     destination may start, each prefix of the rest of that line that ends where a
     destination can end, in every spelling a reader could decode it to.
     """
-    raws = set()
+    raws, cut_off = set(), False
     for start in _STARTS.finditer(text):
         # The destination may start right away, after whitespace (a definition's may
         # be on the next line), or after an opening < or quote.
-        first = _SPACE.match(text, start.end()).end()
-        starts = {start.end(), first} | ({first + 1} if text[first:first + 1] in ("<", '"', "'") else set())
-        for pos in starts:
-            line = text[pos:pos + _WINDOW].split("\n", 1)[0]
+        anchor, first = start.group(), _SPACE.match(text, start.end()).end()
+        opener = text[first:first + 1]
+        if anchor == "<":
+            starts = {start.end(): _CLOSE_AUTOLINK}
+        else:
+            starts = {start.end(): _CLOSE_BARE, first: _CLOSE_BARE}
+            if opener == "<" and anchor in ("](", "]:"):
+                starts[first + 1] = _CLOSE_ANGLE
+            elif opener in _CLOSE_QUOTE and anchor[0] in "hHsS":  # a quoted HTML attribute
+                starts[first + 1] = _CLOSE_QUOTE[opener]
+            elif opener in ("<", '"', "'"):
+                starts[first + 1] = _CLOSE_BARE
+        for pos, close in starts.items():
+            newline = text.find("\n", pos, pos + _WINDOW + 1)
+            line = text[pos:newline] if newline != -1 else text[pos:pos + _WINDOW + 1]
+            if len(line) > _WINDOW:
+                line = line[:_WINDOW]
+                cut_off = cut_off or not close.search(line)
             raws |= {line[:m.start()] for m in _END.finditer(line)} | {line}
     found = set()
     for raw in raws:
@@ -99,7 +122,7 @@ def _candidates(text: str) -> set[str]:
             path = re.split(r"[?#]", spelling, maxsplit=1)[0]  # the URL's path component
             found |= {spelling, path, unquote(path)}
     found.discard("")  # a link to a heading in the rule itself, or an empty link
-    return found
+    return found, cut_off
 
 
 def reference_problem(project_dir: Path, native: str, canonical: str) -> str | None:
@@ -109,8 +132,9 @@ def reference_problem(project_dir: Path, native: str, canonical: str) -> str | N
     native path but a different path from the canonical one. References that leave
     both folders (like ../../docs/guide.md) resolve the same from either path because
     canonical paths keep the native depth; references to siblings do not.
-    unclear_reference: a recognized reference has no complete destination, so the
-    rule stays in place rather than risk breaking it.
+    unclear_reference: a recognized reference has no complete destination, or one was
+    too long to check completely, so the rule stays in place rather than risk
+    breaking it.
     """
     root = Path(project_dir)
     try:
@@ -118,12 +142,13 @@ def reference_problem(project_dir: Path, native: str, canonical: str) -> str | N
     except OSError:
         return "unclear_reference"
     native_dir, canonical_dir = os.path.dirname(native), os.path.dirname(canonical)
-    for ref in _candidates(text):
+    candidates, cut_off = _candidates(text)
+    for ref in candidates:
         from_native = os.path.normpath(os.path.join(native_dir, ref))
         if (os.path.normpath(os.path.join(canonical_dir, ref)) != from_native
                 and os.path.lexists(root / from_native)):
             return "breaks_reference"
-    if _unclear(text):
+    if cut_off or _unclear(text):
         return "unclear_reference"
     return None
 

@@ -587,6 +587,48 @@ def test_a_rule_with_a_reference_the_guard_cannot_resolve_is_left_in_place(tmp_p
     assert ".claude/rules/python.md" in result["init_result"]["linked"]
 
 
+LONG_NAME = "a" * 180 + ".md"
+
+
+@pytest.mark.parametrize("reference", [
+    "[guide](" + "%61" * 180 + ".md)",              # 543 characters encoded
+    "[guide](<" + "%61" * 180 + ".md>)",
+    "[guide](<" + "dir one/" * 70 + "guide.md>)",   # spaces allowed inside <...>
+    '<a href="' + "&#97;" * 180 + '.md">guide</a>',
+    '<a href="' + "dir one/" * 70 + 'guide.md">guide</a>',  # spaces allowed inside quotes
+])
+def test_a_reference_longer_than_the_scan_window_is_unclear(tmp_path, reference):
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/review.mdc", f"Follow this.\n\n{reference}\n")
+    write(project, f".cursor/rules/{LONG_NAME}", "# Guide\n")
+    before = (project / ".cursor/rules/review.mdc").read_bytes()
+
+    result = sync_cmd.run(project)
+
+    assert {"path": ".cursor/rules/review.mdc", "type": "rule", "reason": "unclear_reference"} in \
+        result["init_result"]["left_in_place"]
+    assert not os.path.islink(project / ".cursor/rules/review.mdc")
+    assert (project / ".cursor/rules/review.mdc").read_bytes() == before
+    assert not os.path.lexists(core.sources_dir(project) / ".cursor/rules/review.mdc")
+    assert not os.path.lexists(project / ".ctx/cursor-rules/review.mdc")
+    assert ".claude/rules/python.md" in result["init_result"]["linked"]
+
+
+def test_long_lines_of_ordinary_text_do_not_block_adoption(tmp_path):
+    # Unwrapped paragraphs run far past the scan window; only a destination that could
+    # still be open at the window's end is uncertain.
+    project = happy_repo(tmp_path)
+    prose = "Keep functions small and name things clearly. " * 40
+    text = (f"{prose}See [the guide](../../docs/guide.md) when x < y. {prose}\n"
+            f"{prose}Use @pytest.fixture and <https://example.com> too. {prose}\n")
+    write(project, ".cursor/rules/python.mdc", text)
+    write(project, "docs/guide.md", "# Guide\n")
+
+    result = sync_cmd.run(project)
+
+    assert ".cursor/rules/python.mdc" in result["init_result"]["linked"]
+
+
 @pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions as non-root")
 def test_a_rule_that_cannot_be_read_is_treated_as_unclear(tmp_path):
     project = tmp_path / "repo"
