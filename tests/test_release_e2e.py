@@ -122,13 +122,16 @@ def test_release_lifecycle(tmp_path):
     assert "SUPERCTX.md" in read(project, "AGENTS.md")
     unchanged_sync(project)
 
-    # 5. Native edits that bypass the canonical copy are conflicts: reported, nothing written.
+    # 5. Native edits that bypass the canonical copy are conflicts: preserved and reported,
+    # while the same run still repairs a pointer and a link that are merely missing.
     write(project, "CLAUDE.md", "Never use tabs.\n")                         # pointer edited
     os.unlink(project / ".claude/rules/python.md")                           # link replaced
     write(project, ".claude/rules/python.md", "Use mypy.\n")
     os.unlink(project / ".cursor/rules/style.mdc")                           # link retargeted
     os.symlink("../../src/app.py", project / ".cursor/rules/style.mdc")
     shutil.rmtree(project / ".ctx/architecture")                             # canonical deleted
+    os.unlink(project / "AGENTS.md")                                         # pointer missing
+    os.unlink(project / ".grok/skills/deploy")                               # link missing
     before = snapshot(project)
     code, out = cli(project, "sync")
     assert code == 1, out
@@ -136,7 +139,13 @@ def test_release_lifecycle(tmp_path):
     assert "! .claude/rules/python.md: native_replaced" in out
     assert "! .cursor/rules/style.mdc: link_retargeted" in out
     assert "! docs/architecture: canonical_missing" in out
-    assert snapshot(project) == before
+    assert "+ AGENTS.md" in out and "+ .grok/skills/deploy" in out
+    assert "SUPERCTX.md" in read(project, "AGENTS.md")
+    assert os.readlink(project / ".grok/skills/deploy") == LINKS[".grok/skills/deploy"]
+    after = snapshot(project)
+    assert after.pop("AGENTS.md") and after.pop(".grok/skills/deploy")
+    assert after.pop(".grok/skills")[:2] == before.pop(".grok/skills")[:2]  # its mtime moves with the new link
+    assert after == before  # everything else, conflicts included, is untouched
     assert read(project, ".ctx/SUPERCTX.md").count("Never use tabs.") == 0  # never imported from a native
 
     # 6. Recovery: move the edits to the canonical copies, restore from backup, then sync.

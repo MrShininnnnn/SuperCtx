@@ -92,7 +92,7 @@ After `/superctx:sync`:
 .ctx/
   SUPERCTX.md
   superctx.toml      # manifest
-  manifest.toml      # tells SuperCtx 0.1.x clients not to modify this repo
+  manifest.toml      # makes SuperCtx 0.1.4 commands refuse this repo
   rules/python.md
   skills/review/
   sources/           # local backups of the originals (gitignored)
@@ -108,7 +108,7 @@ Edit `.ctx/SUPERCTX.md` for shared instructions. Rules and skills can be edited 
 
 ## When sync reports a conflict
 
-Sync never overwrites something it did not write. It leaves it in place, reports it, and exits with status 1:
+Sync never overwrites something it did not write. It leaves it in place, reports it, and exits with status 1. Missing pointers and links elsewhere are still repaired in the same run and listed as repaired, so a run can report both:
 
 | Reason | What happened | To resolve |
 |---|---|---|
@@ -122,8 +122,8 @@ Deleted pointers and links are recreated by the next sync.
 ## Upgrading from 0.1
 
 1. Update the plugin (see [Updating](#updating)).
-2. Run `/superctx:sync` once in each repository. It copies `.ctx/manifest.toml` to `.ctx/manifest.v1.toml`, writes the new manifest `.ctx/superctx.toml`, and turns `.ctx/manifest.toml` into a marker that makes SuperCtx 0.1.x refuse to change the repository. `.ctx/SUPERCTX.md` and its content are kept, and pointers are refreshed to the current wording.
-3. Commit the `.ctx/` changes. Everyone working in the repository needs SuperCtx 0.2; 0.1.x reports an invalid manifest and writes nothing.
+2. Run `/superctx:sync` once in each repository. It copies `.ctx/manifest.toml` to `.ctx/manifest.v1.toml`, writes the new manifest `.ctx/superctx.toml`, and turns `.ctx/manifest.toml` into a compatibility marker. `.ctx/SUPERCTX.md` and its content are kept, and pointers are refreshed to the current wording.
+3. Commit the `.ctx/` changes, and have everyone working in the repository update to SuperCtx 0.2. While `.ctx/manifest.toml` is present, the SuperCtx 0.1.4 commands (`sync`, `add`, `add --create-shim`) report an invalid manifest and write nothing; this is the release gate's tested guarantee. It is not tested for other 0.1.x versions. Do not delete `.ctx/manifest.toml`: without it, 0.1.4's internal setup function (not reachable from its commands) would set up again over `.ctx/SUPERCTX.md`, a known hazard kept as an expected failure in `tests/test_v2_migration_safety.py`.
 4. Rules, skills, and `.planning` already in the repository are listed as candidates rather than moved. Connect each one you want managed with `/superctx:add <path>`.
 
 If the upgrade is interrupted, run `/superctx:sync` again; it resumes from `.ctx/manifest.v1.toml`. If `.ctx/superctx.toml` is lost after the upgrade, sync refuses to rebuild it, because the v1 copy does not record resources added since; restore it from version control.

@@ -39,6 +39,6 @@ Present the output from the command:
   > All SuperCtx context links are healthy.
 - On **initialization** (exit 0), confirm the connected instruction files, the linked rules and skills, the hub location, and any backups.
 - On **repair** (exit 0), list the repaired shims and links.
-- On **unresolved** items (exit 1), explain each reason. `native_edited` means someone wrote content into a generated shim: it was left in place, so offer to move that content into `.ctx/SUPERCTX.md` before restoring the shim. Link conflicts (`link_retargeted`, `native_replaced`, `canonical_missing`) were also left untouched; explain them and ask how to proceed.
+- On **unresolved** items (exit 1), explain each reason. The same run may also have repaired other missing shims or links; report those repairs as well. `native_edited` means someone wrote content into a generated shim: it was left in place, so offer to move that content into `.ctx/SUPERCTX.md` before restoring the shim. Link conflicts (`link_retargeted`, `native_replaced`, `canonical_missing`) were also left untouched; explain them and ask how to proceed.
 - For anything listed under **Left in place**, relay the reason. These are not errors: SuperCtx only adopts resources whose tool behavior it has verified.
 - On **legacy or inspection warning/stops** (exit 1), explain the warning and explain what needs to be inspected. Do not attempt automatic repair.

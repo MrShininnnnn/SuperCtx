@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tested compatibility matrix with Claude Code, Cursor, and Grok Build versions (`architecture/compatibility.md`). Real-tool checks are in `tests/test_real_agents.py` (opt-in).
 
 ### Changed
-- The manifest moves to `.ctx/superctx.toml` (schema 2). On first sync, `.ctx/manifest.toml` is copied to `.ctx/manifest.v1.toml` and replaced by a marker that makes SuperCtx 0.1.x refuse to change the repository. Interrupted upgrades resume, and a lost v2 manifest is reported instead of rebuilt. See "Upgrading from 0.1" in the README.
+- The manifest moves to `.ctx/superctx.toml` (schema 2). On first sync, `.ctx/manifest.toml` is copied to `.ctx/manifest.v1.toml` and replaced by a compatibility marker: while it is present, the SuperCtx 0.1.4 commands (`sync`, `add`) refuse the repository and write nothing (tested; other 0.1.x versions are not). With the marker deleted, 0.1.4's internal setup function, which its commands do not reach, would set up again over the hub; this known hazard is kept as an expected test failure. Interrupted upgrades resume, and a lost v2 manifest is reported instead of rebuilt. See "Upgrading from 0.1" in the README.
 - Sync leaves edited pointers, replaced or retargeted links, and missing canonical copies in place, reports them as conflicts, and exits with status 1.
 
 ### Not included
