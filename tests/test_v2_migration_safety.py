@@ -439,3 +439,28 @@ def test_pointers_written_by_the_released_client_stay_healthy_after_migration(tm
     for rel in ("CLAUDE.md", "AGENTS.md"):
         assert "do not edit" in (project / rel).read_text(encoding="utf-8")
     assert sync_cmd.run(project)["mutated"] is False
+
+
+GROK_FILES = {
+    ".grok/config.toml": '[cli]\nauto_update = false\n',
+    ".grok/hooks/check.json": '{"hooks": []}\n',
+    ".grok/agents/helper.md": "---\nname: helper\n---\nHelp.\n",
+    ".grok/plugins/team/plugin.json": '{"name": "team"}\n',
+    ".grok/skills/deploy/SKILL.md": "---\nname: deploy\ndescription: Deploy\n---\nDeploy.\n",
+    ".grok/rules/style.md": "Use tabs.\n",
+}
+
+
+def test_grok_files_survive_migration_untouched(tmp_path, legacy_scripts):
+    project = build_v1(tmp_path / "repo", legacy_scripts)
+    for rel, text in GROK_FILES.items():
+        write(project, rel, text)
+    before = snapshot(project / ".grok", times=False)
+
+    result = sync_cmd.run(project)
+
+    assert result["final_state"] != "error"
+    assert snapshot(project / ".grok", times=False) == before
+    assert not any(os.path.islink(project / ".grok" / p) for p in ("skills/deploy", "config.toml"))
+    # The Grok skill is offered for adoption, never adopted by a migration.
+    assert ".grok/skills/deploy" in result["candidates"]

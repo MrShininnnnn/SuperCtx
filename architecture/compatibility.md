@@ -8,6 +8,15 @@ Which tools SuperCtx adopts resources for, and how each was verified. A resource
 | Claude Code | rule | `.claude/rules/**/*.md` | relative file symlink | supported | Claude Code 2.1.200, macOS 26 | 2026-11-02 |
 | Claude Code | skill | `.claude/skills/<name>/` | relative directory symlink | supported | Claude Code 2.1.200, macOS 26 | 2026-11-02 |
 | Cursor | rule | `.cursor/rules/**/*.mdc` | relative file symlink | supported | Cursor Agent CLI 2026.10.22-27dcf5f (`grok-4.7-medium`), macOS 26 | 2026-11-03 |
+| Cursor | skill | `.cursor/skills/<name>/` | relative directory symlink | supported | Cursor Agent CLI 2026.10.22-27dcf5f (`grok-4.7-medium`), macOS 26 | 2026-11-04 |
+| Cursor | skill (reused) | `.claude/skills/<name>/` | the Claude Code link | supported | Cursor Agent CLI 2026.10.22-27dcf5f (`grok-4.7-medium`), macOS 26 | 2026-11-04 |
+| Grok Build | instructions (reused) | `CLAUDE.md`, `AGENTS.md` | the existing pointers | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
+| Grok Build | skill | `.grok/skills/<name>/` | relative directory symlink | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
+| Grok Build | skill (reused) | `.claude/skills/<name>/` | the Claude Code link | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
+| Grok Build | rule (reused) | `.claude/rules/**/*.md` | the Claude Code link | limited: `paths` scope ignored | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
+| OpenAI Codex | skill | `.agents/skills/<name>/` | — | unsupported (not verified) | Codex CLI not runnable | 2026-11-04 |
+
+"Reused" rows add no files: the tool reads another tool's native path, so the resource SuperCtx already published there serves both.
 
 ## How a row is verified
 
@@ -17,7 +26,14 @@ Which tools SuperCtx adopts resources for, and how each was verified. A resource
 - **Scoped rule, active:** a rule with `paths: ["src/**/*.py"]` supplies its codeword after Claude reads `src/app.py`.
 - **Scoped rule, inactive:** the same rule supplies nothing after Claude reads `docs/notes.md`.
 - **Cursor scoped rule:** the same two checks with a `.mdc` rule scoped by `globs: src/**/*.py`, run with `cursor-agent` in read-only ask mode. As a control, the same rule saved as `.md` (which Cursor ignores) supplied nothing for `src/app.py`.
+- **Cursor skill:** in ask mode (which cannot run commands), asking for the skill by name, without searching the filesystem, returns the codeword from its bundled reference and the text of its bundled script, for a skill linked from `.cursor/skills/` and one linked from `.claude/skills/`. Control: the same package in a folder Cursor does not scan for skills is reported unavailable.
+- **Grok Build:** runs use `GROK_FOLDER_TRUST=0` (trust for that run only; nothing is written to Grok's trust store) and turn off the user's Claude and Cursor hooks and MCP servers. Read-only questions run in plan mode; skill runs allow only `bash …/scripts/run.sh` and reads inside the repository.
+  - **Instructions:** `grok inspect --json` lists the `CLAUDE.md` and `AGENTS.md` pointers as instruction sources and never `.ctx/SUPERCTX.md`, so the hub is not loaded twice: Grok does not follow `@` imports, and the model reads the hub when a pointer directs it. A session then answers codewords that exist only in the hub (imported from both original files).
+  - **Skill:** `grok inspect --json` finds the skill at its linked path, and invoking it by name runs its bundled script and reads its bundled reference, for a skill linked from `.grok/skills/` and one linked from `.claude/skills/`.
+  - **Claude rule:** the rule applies after reading `src/app.py`, but also after reading `docs/notes.md`: Grok ignores `paths`, with or without SuperCtx. The test asserts this, so it fails if Grok starts honoring the scope.
 
 The same checks were run first on native (unlinked) folders to confirm they distinguish the cases.
+
+Real tools occasionally answer wrongly: Claude Code (`haiku`) once answered `NONE` for the active scoped rule and passed on three reruns. Re-run a failing check before treating it as a regression.
 
 Re-run the checks when a tool's version changes, and add a row (with `publish = "link"` and `verified_behavior` in `scripts/superctx/conventions.toml`) only after they pass.

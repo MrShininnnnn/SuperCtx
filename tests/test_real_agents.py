@@ -26,6 +26,7 @@ pytestmark = pytest.mark.skipif(
 needs_claude = pytest.mark.skipif(shutil.which("claude") is None, reason="Claude Code is not installed")
 # Cursor's CLI installs as both `agent` and `cursor-agent`; the second name is unambiguous.
 needs_cursor = pytest.mark.skipif(shutil.which("cursor-agent") is None, reason="Cursor Agent CLI is not installed")
+needs_grok = pytest.mark.skipif(shutil.which("grok") is None, reason="Grok Build is not installed")
 
 SKILL_MD = """---
 name: review
@@ -47,6 +48,25 @@ RULE_PROMPT = (
 )
 # Cursor's free plan allows only Grok and Auto; pin one so results are repeatable.
 CURSOR_MODEL = "grok-4.7-medium"
+
+# One skill package per tool folder, plus a control outside every tool's skill folders.
+# Grok ships a skill named `review`, so these names are unique. Scripts are run by
+# absolute path because Grok runs commands from the repository root.
+SHARED_SKILL_MD = """---
+name: {name}
+description: Helper. Use when the user asks to run the {name} skill.
+---
+
+Run `bash <absolute path of this skill's folder>/scripts/run.sh` and report its exact output.
+If you cannot run commands, report the exact text of scripts/run.sh instead.
+Then read references/guide.md in this skill's folder and report the codeword it contains.
+"""
+SKILLS = {".claude/skills": ("sctx-review", "7731"), ".cursor/skills": ("sctx-lint", "5150"),
+          ".grok/skills": ("sctx-deploy", "2207"), "misc/skills": ("sctx-fmt", "9090")}
+# Grok trusts the folder for this run only (nothing is written to its trust store) and
+# skips the user's own Claude and Cursor hooks and MCP servers.
+GROK_ENV = {"GROK_FOLDER_TRUST": "0", "GROK_CLAUDE_HOOKS_ENABLED": "false", "GROK_CLAUDE_MCPS_ENABLED": "false",
+            "GROK_CURSOR_HOOKS_ENABLED": "false", "GROK_CURSOR_MCPS_ENABLED": "false"}
 
 
 def set_up(root: Path, files: dict[str, str], executable: tuple[str, ...] = ()) -> None:
@@ -93,6 +113,29 @@ def cursor_repo(tmp_path_factory) -> Path:
     return root
 
 
+@pytest.fixture(scope="module")
+def shared_repo(tmp_path_factory) -> Path:
+    """Instructions, a scoped Claude rule, and one skill per tool, adopted by sync."""
+    root = tmp_path_factory.mktemp("real-agent-shared") / "repo"
+    files = {
+        "CLAUDE.md": "# Project\n\nThe hub codeword is HUB-7781.\n",
+        "AGENTS.md": "# Agents\n\nThe agents codeword is AGENTS-3390.\n",
+        "src/app.py": "print('hello')\n",
+        "docs/notes.md": "# Notes\n\nNothing here.\n",
+        ".claude/rules/python.md": RULE_MD,
+    }
+    for folder, (name, token) in SKILLS.items():
+        files[f"{folder}/{name}/SKILL.md"] = SHARED_SKILL_MD.format(name=name)
+        files[f"{folder}/{name}/scripts/run.sh"] = f"#!/bin/sh\necho SCRIPT-{token}\n"
+        files[f"{folder}/{name}/references/guide.md"] = f"# Guide\n\nThe reference codeword is REF-{token}.\n"
+    set_up(root, files, executable=tuple(f"{f}/{n}/scripts/run.sh" for f, (n, _) in SKILLS.items()))
+    for folder in (".claude/skills", ".cursor/skills", ".grok/skills"):
+        name = SKILLS[folder][0]
+        assert os.readlink(root / folder / name) == f"../../.ctx/skills/{name}"
+    assert not os.path.islink(root / "misc/skills/sctx-fmt")
+    return root
+
+
 def ask_claude(root: Path, prompt: str, tools: str) -> str:
     """Run Claude Code and return its final answer; fail unless the run succeeded."""
     proc = subprocess.run(
@@ -133,6 +176,36 @@ def ask_cursor(root: Path, prompt: str) -> str:
     return event.get("result", "")
 
 
+def ask_grok(root: Path, prompt: str, *allow: str) -> str:
+    """Run Grok Build headless and return its answer; fail unless the run ended normally.
+
+    Without allow rules the run is read-only (plan mode); allow rules approve only the
+    commands they match.
+    """
+    mode = ["--permission-mode", "plan"] if not allow else [a for rule in allow for a in ("--allow", rule)]
+    proc = subprocess.run(
+        ["grok", "-p", prompt, "--output-format", "json", "--no-subagents", "--disable-web-search",
+         "--max-turns", "10", *mode],
+        cwd=root, capture_output=True, text=True, timeout=300, env={**os.environ, **GROK_ENV},
+    )
+    try:
+        event = json.loads(proc.stdout)
+    except ValueError:
+        pytest.fail(f"grok produced no result (exit {proc.returncode}): {(proc.stdout + proc.stderr)[-400:]}")
+    if proc.returncode != 0 or event.get("stopReason") != "end_turn":
+        # Errors such as a usage limit arrive as {"type": "error", "message": ...}.
+        detail = event.get("message") or event.get("text", "")
+        pytest.fail(f"grok run failed (exit {proc.returncode}, {event.get('stopReason')}): {detail[-400:]}")
+    return event.get("text", "")
+
+
+def grok_inspect(root: Path) -> dict:
+    proc = subprocess.run(["grok", "inspect", "--json"], cwd=root, capture_output=True, text=True, timeout=120,
+                          env={**os.environ, **GROK_ENV})
+    assert proc.returncode == 0, proc.stderr[-400:]
+    return json.loads(proc.stdout)
+
+
 def is_none(answer: str) -> bool:
     # Cursor's result joins the agent's narration and its final reply ("...file.NONE"),
     # so require the reply to end with NONE and contain no codeword.
@@ -167,3 +240,64 @@ def test_cursor_linked_scoped_rule_applies_to_a_matching_file(cursor_repo):
 def test_cursor_linked_scoped_rule_stays_inactive_for_a_non_matching_file(cursor_repo):
     answer = ask_cursor(cursor_repo, RULE_PROMPT.format(f="docs/notes.md"))
     assert is_none(answer), answer
+
+
+# --- skills shared across tools (Cursor, Grok Build) ------------------------
+
+SKILL_PROMPT_CURSOR = ("Use the {name} skill. Do not search the filesystem for it; "
+                       "if no such skill is available to you, reply NO-SUCH-SKILL.")
+
+
+@needs_cursor
+@pytest.mark.parametrize("folder", [".claude/skills", ".cursor/skills"])
+def test_cursor_uses_a_linked_skill_with_its_bundled_files(shared_repo, folder):
+    name, token = SKILLS[folder]
+    answer = ask_cursor(shared_repo, SKILL_PROMPT_CURSOR.format(name=name))
+    assert f"SCRIPT-{token}" in answer and f"REF-{token}" in answer, answer
+
+
+@needs_cursor
+def test_cursor_does_not_see_a_skill_outside_its_skill_folders(shared_repo):
+    # Control: the same package outside Cursor's skill folders is not available, so the
+    # checks above show discovery through the links, not a search of the repository.
+    answer = ask_cursor(shared_repo, SKILL_PROMPT_CURSOR.format(name="sctx-fmt"))
+    assert "NO-SUCH-SKILL" in answer and "REF-9090" not in answer, answer
+
+
+@needs_grok
+@pytest.mark.parametrize("folder", [".claude/skills", ".grok/skills"])
+def test_grok_runs_a_linked_skill_with_its_bundled_files(shared_repo, folder):
+    name, token = SKILLS[folder]
+    discovered = {s["name"]: s["source"].get("path", "") for s in grok_inspect(shared_repo)["skills"]
+                  if s["source"].get("type") == "project"}
+    assert discovered.get(name, "").endswith(f"{folder}/{name}/SKILL.md"), discovered
+    answer = ask_grok(shared_repo, f"/{name}", "Bash(bash *scripts/run.sh)", f"Read({shared_repo}/**)")
+    assert f"SCRIPT-{token}" in answer and f"REF-{token}" in answer, answer
+
+
+@needs_grok
+def test_grok_loads_the_pointers_not_a_second_copy_of_the_hub(shared_repo):
+    # Grok reads both CLAUDE.md and AGENTS.md. With SuperCtx they are short pointers, and
+    # the hub itself is not among the instruction sources Grok loads, so its content
+    # enters the context only when the model follows a pointer.
+    sources = {os.path.relpath(p["path"], shared_repo.resolve()).lower(): p["sizeBytes"]
+               for p in grok_inspect(shared_repo)["projectInstructions"]}
+    assert {"claude.md", "agents.md"} <= set(sources), sources
+    assert not any(".ctx/" in path for path in sources), sources
+    assert sources["claude.md"] < 400 and sources["agents.md"] < 400, sources
+    answer = ask_grok(shared_repo, "What are the hub codeword and the agents codeword defined in this "
+                                   "project's shared context? Reply with only the two codewords.")
+    assert "HUB-7781" in answer and "AGENTS-3390" in answer, answer
+
+
+@needs_grok
+def test_grok_applies_a_linked_claude_rule_to_a_matching_file(shared_repo):
+    assert "RULE-PY-5521" in ask_grok(shared_repo, RULE_PROMPT.format(f="src/app.py"))
+
+
+@needs_grok
+def test_grok_ignores_a_claude_rule_scope(shared_repo):
+    # Limited support, recorded in architecture/compatibility.md: Grok loads Claude rules
+    # but not their `paths:` scope, so the rule also applies to a non-matching file (the
+    # same happens without SuperCtx). If this starts failing, Grok honors the scope now.
+    assert "RULE-PY-5521" in ask_grok(shared_repo, RULE_PROMPT.format(f="docs/notes.md"))
