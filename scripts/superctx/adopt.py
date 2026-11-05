@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import stat
+import tempfile
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -197,14 +198,20 @@ def link_target(native: str, canonical: str) -> str:
     return os.path.relpath(canonical, os.path.dirname(native) or ".").replace("\\", "/")
 
 
-def plan(project_dir: Path, doc: dict | None = None) -> tuple[list[dict], list[dict]]:
-    """Split discovered, untracked rules and skills into (adoptable, left in place with a reason)."""
+def plan(project_dir: Path, doc: dict | None = None, explicit: bool = False,
+         extra: list[dict] = ()) -> tuple[list[dict], list[dict]]:
+    """Split discovered, untracked rules and skills into (adoptable, left in place with a reason).
+
+    Folders (planning conventions, or `extra` folders named to /superctx:add) are
+    connected only explicitly, so they are included only when `explicit` is set.
+    """
     root = Path(project_dir).resolve()
     tracked = {n["path"] for n in doc.get("natives", [])} if doc else set()
     taken_ids = {r["id"] for r in doc.get("resources", [])} if doc else set()
     taken_canonicals = {r["canonical"].lower() for r in doc.get("resources", [])} if doc else set()
 
-    found = [c for c in registry.detect_resources(root) if c["path"] not in tracked]
+    found = [c for c in [*registry.detect_resources(root), *extra]
+             if c["path"] not in tracked and (explicit or not c.get("explicit"))]
     ids: dict[str, int] = {}
     canonicals: dict[str, int] = {}
     for c in found:
@@ -234,6 +241,19 @@ def plan(project_dir: Path, doc: dict | None = None) -> tuple[list[dict], list[d
         else:
             left.append({"path": c["path"], "type": c["type"], "reason": reason})
     return adoptable, left
+
+
+def links_supported(project_dir: Path) -> bool:
+    """Whether a relative directory symlink can be created and followed in the project."""
+    probe = Path(tempfile.mkdtemp(prefix=".superctx-link-probe-", dir=project_dir))
+    try:
+        (probe / "target").mkdir()
+        _symlink("target", probe / "link", target_is_directory=True)
+        return (probe / "link").is_dir()
+    except OSError:
+        return False
+    finally:
+        shutil.rmtree(probe, ignore_errors=True)
 
 
 def manifest_entries(cand: dict) -> tuple[dict, dict]:

@@ -15,6 +15,10 @@ Which tools SuperCtx adopts resources for, and how each was verified. A resource
 | Grok Build | skill (reused) | `.claude/skills/<name>/` | the Claude Code link | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
 | Grok Build | rule (reused) | `.claude/rules/**/*.md` | the Claude Code link | limited: `paths` scope ignored | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
 | OpenAI Codex | skill | `.agents/skills/<name>/` | — | unsupported (not verified) | Codex CLI not runnable | 2026-11-04 |
+| Claude Code | planning folder (write) | `.planning/`, or any folder added | relative directory symlink | supported | Claude Code 2.1.200 (`haiku`), macOS 26 | 2026-11-04 |
+| Cursor | planning folder (write) | `.planning/`, or any folder added | relative directory symlink | supported | Cursor Agent CLI 2026.10.22-27dcf5f (`grok-4.7-medium`), macOS 26 | 2026-11-04 |
+| Grok Build | planning folder (write) | `.planning/`, or any folder added | relative directory symlink | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
+| Claude Code | reference folder (read) | any folder added | relative directory symlink | supported | Claude Code 2.1.200 (`haiku`), macOS 26 | 2026-11-04 |
 
 "Reused" rows add no files: the tool reads another tool's native path, so the resource SuperCtx already published there serves both.
 
@@ -33,6 +37,9 @@ Which tools SuperCtx adopts resources for, and how each was verified. A resource
   - **Claude rule:** the rule applies after reading `src/app.py`, but also after reading `docs/notes.md`: Grok ignores `paths`, with or without SuperCtx. The test asserts this, so it fails if Grok starts honoring the scope.
 
 The same checks were run first on native (unlinked) folders to confirm they distinguish the cases.
+
+- **Planning folder:** `.planning/` is connected with the real `superctx add`, and each tool is asked to append its own line to `.planning/<plan>/progress.md` through the original path with its ordinary file tools (Cursor in its default agent mode; Grok with edits allowed only inside the test repository). The canonical `.ctx/planning/<plan>/progress.md` gains the line and `.planning` is still a link afterwards. A writer that replaced the link would fail the check and stay unmanaged.
+- **Reference folder:** `docs/architecture/` is connected the same way and Claude reads a document through its original path. Non-agent readers are covered by unit tests: a link in another document, a script reading a file, and the folder's own relative references all resolve through the original path.
 
 Real tools occasionally answer wrongly: Claude Code (`haiku`) once answered `NONE` for the active scoped rule and passed on three reruns. Re-run a failing check before treating it as a regression.
 

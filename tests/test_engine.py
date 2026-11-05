@@ -1,5 +1,6 @@
 """Unit tests for the SuperCtx engine using temp project dirs."""
 
+import os
 from importlib import resources
 from pathlib import Path
 
@@ -940,12 +941,11 @@ def test_add_validations_missing_and_directories(tmp_path):
         add_cmd.run(tmp_path, "missing.md")
     assert "File does not exist" in str(exc_info.value)
 
-    # Directory path validation
+    # A directory is connected as a reference folder (v0.2), linked from its path
     folder_path = tmp_path / "folder"
     folder_path.mkdir()
-    with pytest.raises(add_cmd.AddError) as exc_info:
-        add_cmd.run(tmp_path, "folder")
-    assert "Directories are not supported" in str(exc_info.value)
+    assert add_cmd.run(tmp_path, "folder").status == "added"
+    assert os.readlink(folder_path) == ".ctx/folder"
 
     # Outside project validation
     outside = tmp_path.parent / "outside.md"

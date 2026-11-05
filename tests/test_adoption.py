@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -853,6 +854,190 @@ def test_references_inside_a_skill_or_beyond_its_tool_folder_do_not_block_adopti
 
     assert ".claude/skills/review" in result["init_result"]["linked"]
     assert (project / ".ctx/skills/review/references/more.md").is_file()
+
+
+# --- reference and planning folders -------------------------------------------
+
+def reference_folder(project: Path) -> Path:
+    project = happy_repo(project)
+    sync_cmd.run(project)
+    write(project, "docs/architecture/adr-1.md", "# ADR 1\n\nSee [the code](../../src/app.py).\n")
+    write(project, "docs/architecture/diagrams/flow.txt", "a -> b\n")
+    write(project, "docs/architecture/tools/check.sh", "#!/bin/sh\necho ok\n", mode=0o755)
+    write(project, "src/app.py", "print('hello')\n")
+    write(project, "README.md", "Read [ADR 1](docs/architecture/adr-1.md).\n")
+    return project
+
+
+def test_add_connects_a_reference_folder_through_a_relative_link(tmp_path):
+    project = reference_folder(tmp_path)
+    before = snapshot(project / "docs/architecture")
+
+    res = add_cmd.run(project, "docs/architecture")
+
+    assert res.status == "added"
+    assert os.readlink(project / "docs/architecture") == "../.ctx/architecture"
+    assert snapshot(project / ".ctx/architecture") == before
+    assert snapshot(core.sources_dir(project) / "docs/architecture") == before
+    assert snapshot(project / "docs/architecture") == before  # read through the link
+    doc = manifest.load_v2(project)
+    assert ("reference-docs-architecture", "reference", ".ctx/architecture") in \
+        {(r["id"], r["type"], r["canonical"]) for r in doc["resources"]}
+    # Existing readers keep working through the original path: a link in another
+    # document, a script reading a file, and the folder's own relative reference.
+    assert (project / "docs/architecture/adr-1.md").read_text(encoding="utf-8").startswith("# ADR 1")
+    out = subprocess.run(["cat", "docs/architecture/adr-1.md"], cwd=project, capture_output=True, text=True)
+    assert out.returncode == 0 and out.stdout.startswith("# ADR 1")
+    out = subprocess.run(["sh", "docs/architecture/tools/check.sh"], cwd=project, capture_output=True, text=True)
+    assert out.stdout == "ok\n"
+    assert (project / "docs/architecture/../../src/app.py").resolve() == (project / "src/app.py").resolve()
+    assert (project / ".ctx/architecture/../../src/app.py").resolve() == (project / "src/app.py").resolve()
+    assert sync_cmd.run(project)["mutated"] is False
+
+
+def test_writes_through_the_original_path_reach_the_canonical_files(tmp_path):
+    project = reference_folder(tmp_path)
+    add_cmd.run(project, "docs/architecture")
+
+    with open(project / "docs/architecture/adr-1.md", "a", encoding="utf-8") as f:
+        f.write("Accepted.\n")
+    write(project, "docs/architecture/adr-2.md", "# ADR 2\n")
+
+    assert (project / ".ctx/architecture/adr-1.md").read_text(encoding="utf-8").endswith("Accepted.\n")
+    assert (project / ".ctx/architecture/adr-2.md").read_text(encoding="utf-8") == "# ADR 2\n"
+    assert os.path.islink(project / "docs/architecture")
+    assert sync_cmd.run(project)["final_state"] == "healthy"
+
+
+def test_a_planning_folder_is_a_candidate_and_is_adopted_only_when_added(tmp_path):
+    project = happy_repo(tmp_path)
+    write(project, ".planning/2026-11-04-refactor/progress.md", "# Progress\n")
+    write(project, ".planning/.active_plan", "2026-11-04-refactor\n")
+
+    result = sync_cmd.run(project)
+
+    assert ".planning" not in result["init_result"]["linked"]
+    assert not os.path.islink(project / ".planning")
+    assert ".planning" in sync_cmd.run(project)["candidates"]
+
+    assert add_cmd.run(project, ".planning").status == "added"
+    assert os.readlink(project / ".planning") == ".ctx/planning"
+    assert (project / ".ctx/planning/2026-11-04-refactor/progress.md").read_text(encoding="utf-8") == "# Progress\n"
+    assert ("planning-planning", "planning") in {(r["id"], r["type"]) for r in manifest.load_v2(project)["resources"]}
+    assert ".planning" not in sync_cmd.run(project)["candidates"]
+
+
+@pytest.mark.parametrize("folder, canonical", [
+    ("docs/architecture", ".ctx/architecture"),          # same depth
+    (".notes/journal", ".ctx/journal"),
+    ("a/b/c", ".ctx/b/c"),
+    ("notes", ".ctx/notes"),                             # top level: one deeper, guard decides
+])
+def test_a_folder_keeps_its_depth_when_it_can(tmp_path, folder, canonical):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, f"{folder}/note.md", "# Note\n")
+
+    add_cmd.run(project, folder)
+
+    assert os.readlink(project / folder) == os.path.relpath(canonical, os.path.dirname(folder) or ".")
+    assert (project / canonical / "note.md").is_file()
+
+
+@pytest.mark.parametrize("folder, setup, reason", [
+    (".claude", None, "tool_folder"),                         # holds tool configuration
+    (".claude/rules", None, "tool_folder"),                   # rules there are managed one by one
+    (".claude/rules/sub", None, "tool_folder"),
+    (".claude/planning-with-files", None, "tool_folder"),     # inside a tool-owned folder
+    ("docs/skills", None, "reserved_name"),                   # would be .ctx/skills
+    ("docs/arch", lambda p: (p / "docs/arch/link").symlink_to("../../src"), "contains_symlink"),
+    ("docs/arch", lambda p: write(p, "docs/arch/a.md", "[guide](../guide.md)\n"), "breaks_reference"),
+    ("notes", lambda p: write(p, "notes/a.md", "[code](../src/app.py)\n"), "breaks_reference"),
+])
+def test_a_folder_that_cannot_move_safely_is_left_in_place(tmp_path, folder, setup, reason):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, f"{folder}/x.md", "# X\n")
+    write(project, "docs/guide.md", "# Guide\n")
+    write(project, "src/app.py", "print('hello')\n")
+    if setup:
+        setup(project)
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match=reason):
+        add_cmd.run(project, folder)
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("folder, files", [
+    (".grok/hooks", {"pre-tool-use.json": '{"hooks": []}\n', "check.sh": "#!/bin/sh\nexit 0\n"}),
+    (".grok/agents", {"reviewer.md": "---\nname: reviewer\n---\nReview.\n"}),
+    (".grok/plugins", {"demo/plugin.json": '{"name": "demo"}\n'}),
+    (".grok", {"config.toml": "[mcp]\n", "hooks/a.json": "{}\n"}),
+    (".claude/agents", {"reviewer.md": "---\nname: reviewer\n---\nReview.\n"}),
+    (".claude/commands", {"ship.md": "Ship it.\n"}),
+    (".cursor/hooks", {"format.sh": "#!/bin/sh\nexit 0\n"}),
+    (".codex", {"config.toml": "model = \"x\"\n"}),
+    (".gemini/commands", {"ship.toml": "prompt = \"x\"\n"}),
+    (".github/agents", {"reviewer.agent.md": "Review.\n"}),
+])
+def test_add_refuses_tool_owned_folders_without_changing_anything(tmp_path, folder, files):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    for name, text in files.items():
+        write(project, f"{folder}/{name}", text)
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="tool_folder"):
+        add_cmd.run(project, folder)
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("given", ["docs/architecture", "docs/architecture/", "./docs/architecture"])
+def test_adding_a_connected_folder_again_reports_it_as_tracked(tmp_path, given):
+    project = reference_folder(tmp_path)
+    assert add_cmd.run(project, "docs/architecture").status == "added"
+    before = snapshot(project)
+
+    result = add_cmd.run(project, given)
+
+    assert (result.status, result.path) == ("already_tracked", "docs/architecture")
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("folder", [".", ".ctx", ".ctx/sources", "../outside"])
+def test_add_refuses_folders_superctx_cannot_own(tmp_path, folder):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    (tmp_path / "outside").mkdir()
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError):
+        add_cmd.run(project, folder)
+    assert snapshot(project) == before
+
+
+def test_nothing_is_linked_where_directory_links_are_unsupported(tmp_path, monkeypatch):
+    def no_links(src, dst, target_is_directory=False):
+        raise OSError("symbolic links are not supported here")
+    monkeypatch.setattr(adopt, "_symlink", no_links)
+
+    project = happy_repo(tmp_path)
+    before = {rel: snapshot(project / rel) for rel in (".claude/rules", ".claude/skills")}
+    result = sync_cmd.run(project)
+
+    left = {i["path"]: i["reason"] for i in result["init_result"]["left_in_place"]}
+    assert left == {".claude/rules/python.md": "links_unsupported", ".claude/skills/review": "links_unsupported"}
+    assert result["init_result"]["connected"] == ["CLAUDE.md"] and result["final_state"] == "healthy"
+    for rel, snap in before.items():
+        assert snapshot(project / rel) == snap
+    assert not os.path.lexists(project / ".ctx/rules") and not os.path.lexists(project / ".ctx/skills")
+
+    write(project, "docs/architecture/a.md", "# A\n")
+    before = snapshot(project)
+    with pytest.raises(add_cmd.AddError, match="links_unsupported"):
+        add_cmd.run(project, "docs/architecture")
+    assert snapshot(project) == before
 
 
 # --- add --------------------------------------------------------------------

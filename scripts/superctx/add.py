@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,11 +42,19 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
             "Please inspect the setup."
         )
 
-    # Rules and skills are adopted as links (matched on the path as given, not resolved).
+    # Rules, skills, and folders are adopted as links (matched on the path as given, not resolved).
     native = Path(input_path).as_posix().rstrip("/")
     resource = next((c for c in registry.detect_resources(project_dir) if c["path"] == native), None)
     if resource is not None:
         return _add_resource(project_dir, resource)
+    # A connected folder is a link by now; _add_resource finds it in the manifest first.
+    if (project_dir / native).is_dir():
+        rel = os.path.normpath(native).replace(os.sep, "/")
+        if rel in (".", "") or rel.startswith("../") or os.path.isabs(rel):
+            raise AddError(f"Folder must be inside the project root and not the root itself: {input_path}")
+        if rel.split("/")[0] in (core.CTX_DIRNAME, ".git"):
+            raise AddError(f"Cannot add {rel}: SuperCtx and Git own this folder.")
+        return _add_resource(project_dir, registry.folder_candidate(project_dir, rel, "reference"))
 
     file_path = Path(input_path)
     resolved_file_path = (project_dir / file_path).resolve()
@@ -236,8 +245,11 @@ def _add_resource(project_dir: Path, cand: dict) -> AddResult:
     if any(n["path"] == cand["path"] for n in doc["natives"]):
         return AddResult(path=cand["path"], status="already_tracked", tools=cand["tools"],
                          message=f"{cand['path']} is already tracked.")
-    adoptable, left = adopt.plan(project_dir, doc)
+    extra = [] if any(c["path"] == cand["path"] for c in registry.detect_resources(project_dir)) else [cand]
+    adoptable, left = adopt.plan(project_dir, doc, explicit=True, extra=extra)
     reason = next((item["reason"] for item in left if item["path"] == cand["path"]), None)
+    if reason is None and not adopt.links_supported(project_dir):
+        reason = "links_unsupported"
     if reason is not None:
         raise AddError(f"Cannot add {cand['path']}: {reason}")
 
