@@ -539,6 +539,7 @@ def test_a_reference_that_reaches_outside_the_rules_folder_resolves_from_both_lo
     (".cursor/rules/review.mdc", "[guide](guide.md?view=raw)", ".cursor/rules/guide.md"),
     (".cursor/rules/review.mdc", "[guide](guide.md?view=raw#setup)", ".cursor/rules/guide.md"),
     (".cursor/rules/review.mdc", '<a href="guide&#46;md">Guide</a>', ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "[guide][ref]\n\n[ref]: <\tguide.md >", ".cursor/rules/guide.md"),
     # One fixture per spelling the guard tries: as written, exact CommonMark decoding,
     # HTML decoding (backslash literal), and every backslash escape removed.
     (".cursor/rules/review.mdc", "[guide](a\\_b&#46;md)", ".cursor/rules/a\\_b&#46;md"),
@@ -705,6 +706,128 @@ def test_add_adopts_a_new_cursor_rule_in_an_existing_workspace(tmp_path):
     assert add_cmd.run(project, ".cursor/rules/python.mdc").status == "added"
     assert os.readlink(project / ".cursor/rules/python.mdc") == "../../.ctx/cursor-rules/python.mdc"
     assert sync_cmd.run(project)["mutated"] is False
+
+
+# --- skills from every verified tool -----------------------------------------
+
+def write_skill(project: Path, folder: str, name: str, token: str) -> None:
+    write(project, f"{folder}/{name}/SKILL.md", SKILL_MD.replace("review", name) + token + "\n")
+    write(project, f"{folder}/{name}/scripts/run.sh", RUN_SH, mode=0o755)
+    write(project, f"{folder}/{name}/references/guide.md", GUIDE)
+
+
+def test_cursor_and_grok_skills_are_linked_from_the_shared_skills_folder(tmp_path):
+    project = happy_repo(tmp_path)
+    write_skill(project, ".cursor/skills", "lint", "cursor")
+    write_skill(project, ".grok/skills", "deploy", "grok")
+    native_before = {rel: snapshot(project / rel) for rel in (".cursor/skills/lint", ".grok/skills/deploy")}
+
+    result = sync_cmd.run(project)
+
+    assert result["final_state"] == "healthy"
+    assert {".cursor/skills/lint", ".grok/skills/deploy"} <= set(result["init_result"]["linked"])
+    assert os.readlink(project / ".cursor/skills/lint") == "../../.ctx/skills/lint"
+    assert os.readlink(project / ".grok/skills/deploy") == "../../.ctx/skills/deploy"
+    for rel, before in native_before.items():
+        assert snapshot(project / rel) == before  # read through the link: same bytes and modes
+        assert snapshot(core.sources_dir(project) / rel) == before
+    assert os.access(project / ".grok/skills/deploy/scripts/run.sh", os.X_OK)
+    doc = manifest.load_v2(project)
+    assert {(r["id"], r["canonical"]) for r in doc["resources"] if r["type"] == "skill"} == {
+        ("skill-review", ".ctx/skills/review"), ("skill-lint", ".ctx/skills/lint"), ("skill-deploy", ".ctx/skills/deploy"),
+    }
+    assert sync_cmd.run(project)["mutated"] is False
+
+
+@pytest.mark.parametrize("same_content", [False, True])
+def test_skills_sharing_a_name_across_tools_are_both_preserved_and_reported(tmp_path, same_content):
+    project = happy_repo(tmp_path)
+    write_skill(project, ".claude/skills", "deploy", "claude")
+    write_skill(project, ".grok/skills", "deploy", "claude" if same_content else "grok")
+    before = {rel: snapshot(project / rel) for rel in (".claude/skills/deploy", ".grok/skills/deploy")}
+
+    result = sync_cmd.run(project)
+
+    left = {i["path"]: i["reason"] for i in result["init_result"]["left_in_place"]}
+    assert left[".claude/skills/deploy"] == left[".grok/skills/deploy"] == "name_collision"
+    for rel, snap in before.items():
+        assert not os.path.islink(project / rel) and snapshot(project / rel) == snap
+    assert not os.path.lexists(project / ".ctx/skills/deploy")
+    assert ".claude/skills/review" in result["init_result"]["linked"]
+
+
+def test_codex_skills_are_left_in_place_until_verified(tmp_path):
+    project = happy_repo(tmp_path)
+    write_skill(project, ".agents/skills", "release", "codex")
+    before = snapshot(project / ".agents")
+
+    result = sync_cmd.run(project)
+
+    assert {"path": ".agents/skills/release", "type": "skill", "reason": "not_verified"} in \
+        result["init_result"]["left_in_place"]
+    assert snapshot(project / ".agents") == before
+
+
+def test_grok_configuration_is_never_adopted(tmp_path):
+    from test_v2_migration_safety import GROK_FILES
+    project = happy_repo(tmp_path)
+    for rel, text in GROK_FILES.items():
+        write(project, rel, text)
+    others = {rel for rel in GROK_FILES if not rel.startswith(".grok/skills/")}
+    before = {rel: (project / rel).read_bytes() for rel in others}
+
+    result = sync_cmd.run(project)
+
+    assert ".grok/skills/deploy" in result["init_result"]["linked"]
+    linked_or_left = set(result["init_result"]["linked"]) | {i["path"] for i in result["init_result"]["left_in_place"]}
+    for rel, data in before.items():
+        assert not any(p == rel or rel.startswith(p + "/") for p in linked_or_left), rel
+        assert not os.path.islink(project / rel) and (project / rel).read_bytes() == data
+        assert not os.path.lexists(core.sources_dir(project) / rel)
+
+
+# A skill moves as a whole, so references between its own files keep working; a
+# reference that leaves the skill folder would resolve from .ctx/skills/ instead.
+
+@pytest.mark.parametrize("rel, text, outside", [
+    ("references/more.md", "See [the other skill](../../lint/SKILL.md).\n", ".claude/skills/lint/SKILL.md"),
+    ("SKILL.md", SKILL_MD + "Also read [shared notes](../shared.md).\n", ".claude/skills/shared.md"),
+    ("scripts/run.sh", "#!/bin/sh\n. ../../shared/lib.sh\n", ".claude/skills/shared/lib.sh"),
+    # Scripts usually run from the skill's root, so their paths are relative to it.
+    ("scripts/run.py", "open('../../settings.json')\n", ".claude/settings.json"),
+])
+def test_a_skill_referencing_a_file_outside_its_folder_is_left_in_place(tmp_path, rel, text, outside):
+    project = happy_repo(tmp_path)
+    write(project, f".claude/skills/review/{rel}", text)
+    write(project, outside, "shared\n")
+    before = snapshot(project / ".claude/skills/review")
+
+    result = sync_cmd.run(project)
+
+    assert {"path": ".claude/skills/review", "type": "skill", "reason": "breaks_reference"} in \
+        result["init_result"]["left_in_place"]
+    assert not os.path.islink(project / ".claude/skills/review")
+    assert snapshot(project / ".claude/skills/review") == before
+    assert not os.path.lexists(project / ".ctx/skills/review")
+
+
+def test_references_inside_a_skill_or_beyond_its_tool_folder_do_not_block_adoption(tmp_path):
+    project = happy_repo(tmp_path)
+    write(project, ".claude/skills/review/references/more.md",
+          "Back to [the skill](../SKILL.md), the [guide](guide.md), and [docs](../../../../docs/guide.md).\n")
+    write(project, ".claude/skills/review/scripts/run.sh", "#!/bin/sh\ncat ../references/guide.md\n", mode=0o755)
+    (project / ".claude/skills/review/assets").mkdir()
+    # Binary assets name no files, even when their bytes happen to look like a path.
+    (project / ".claude/skills/review/assets/logo.png").write_bytes(b"\x89PNG\r\n\x00](../../shared.md)\x00")
+    write(project, ".claude/skills/shared.md", "shared\n")
+    # Only Markdown is held to the Markdown grammar; `]:` in code is not a definition.
+    write(project, ".claude/skills/review/assets/types.ts", "type M = {[key: string]: number};\n")
+    write(project, "docs/guide.md", "# Guide\n")
+
+    result = sync_cmd.run(project)
+
+    assert ".claude/skills/review" in result["init_result"]["linked"]
+    assert (project / ".ctx/skills/review/references/more.md").is_file()
 
 
 # --- add --------------------------------------------------------------------

@@ -126,20 +126,49 @@ kind              = "rules"
 suffixes          = [".md"]
 canonical         = ".ctx/rules/"
 publish           = "link"
-tools             = ["Claude Code"]
+tools             = ["Claude Code", "Grok Build"]
 source            = "https://code.claude.com/docs/en/memory"
-verified          = "2026-11-02"
-verified_behavior = "Claude Code 2.1.200, macOS: a rule with paths frontmatter, published as a relative file symlink, loads when a matching file is read and stays inactive for a non-matching file (tests/test_real_agents.py)."
+verified          = "2026-11-04"
+verified_behavior = "Claude Code 2.1.200, macOS: a rule with paths frontmatter, published as a relative file symlink, loads when a matching file is read and stays inactive for a non-matching file. Grok Build 1.0.70 (https://docs.x.ai/build/features/project-rules) loads the same rule through the link but ignores paths, so it applies to every file, linked or not (tests/test_real_agents.py)."
 
 [[convention]]
 path              = ".claude/skills/"
 kind              = "skills"
 canonical         = ".ctx/skills/"
 publish           = "link"
-tools             = ["Claude Code"]
+tools             = ["Claude Code", "Cursor", "Grok Build"]
 source            = "https://code.claude.com/docs/en/skills"
-verified          = "2026-11-02"
-verified_behavior = "Claude Code 2.1.200, macOS: a skill published as a relative directory symlink is invoked by name, runs its bundled script, and reads its bundled reference (tests/test_real_agents.py)."
+verified          = "2026-11-04"
+verified_behavior = "Published as a relative directory symlink, the skill is invoked by name and its bundled files are used: Claude Code 2.1.200 runs its script and reads its reference; Grok Build 1.0.70 does the same; Cursor Agent CLI 2026.10.22-27dcf5f lists it as available and reads its reference and script (tests/test_real_agents.py)."
+
+[[convention]]
+path              = ".cursor/skills/"
+kind              = "skills"
+canonical         = ".ctx/skills/"
+publish           = "link"
+tools             = ["Cursor"]
+source            = "https://cursor.com/docs/context/skills"
+verified          = "2026-11-04"
+verified_behavior = "Cursor Agent CLI 2026.10.22-27dcf5f, macOS: a skill published as a relative directory symlink is listed as available and its bundled reference and script are read; a skill outside Cursor's skill folders is not (tests/test_real_agents.py)."
+
+[[convention]]
+path              = ".grok/skills/"
+kind              = "skills"
+canonical         = ".ctx/skills/"
+publish           = "link"
+tools             = ["Grok Build"]
+source            = "https://docs.x.ai/build/features/skills-plugins-marketplaces"
+verified          = "2026-11-04"
+verified_behavior = "Grok Build 1.0.70, macOS: a skill published as a relative directory symlink is invoked by name, runs its bundled script, and reads its bundled reference (tests/test_real_agents.py)."
+
+[[convention]]
+path      = ".agents/skills/"
+kind      = "skills"
+canonical = ".ctx/skills/"
+tools     = ["OpenAI Codex", "Cursor"]
+source    = "https://developers.openai.com/codex/skills"
+verified  = "2026-11-04"
+note      = "Discovered and left in place: Codex's skill behavior through links has not been verified (the Codex CLI was not runnable in the verification environment)."
 
 [[convention]]
 path              = ".cursor/rules/"

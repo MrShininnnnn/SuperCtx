@@ -49,8 +49,9 @@ _REFERENCES = [
 ]
 
 # Where a destination may start: after a link, a definition, an HTML attribute, an
-# @path import (resolved relative to the file), or an autolink's <.
-_STARTS = re.compile(r"""\]\(|\]:|\b(?:href|src)\s*=|(?:^|(?<=\s))@|<""", re.I | re.M)
+# @path import (resolved relative to the file), or an autolink's <; and at any ../
+# (how scripts and prose name a parent folder), which is part of the destination.
+_STARTS = re.compile(r"""\]\(|\]:|\b(?:href|src)\s*=|(?:^|(?<=\s))@|<|(?<![\w.~/-])(?=\.\./)""", re.I | re.M)
 _END = re.compile(r"""[\s)>"'`<]""")
 _SPACE = re.compile(r"\s*")
 # The scan reads at most _WINDOW characters of a line from each start. A destination
@@ -112,7 +113,8 @@ def _candidates(text: str) -> tuple[set[str], bool]:
             if len(line) > _WINDOW:
                 line = line[:_WINDOW]
                 cut_off = cut_off or not close.search(line)
-            raws |= {line[:m.start()] for m in _END.finditer(line)} | {line}
+            prefixes = {line[:m.start()] for m in _END.finditer(line)} | {line}
+            raws |= prefixes | {p.strip() for p in prefixes}  # some readers trim inside <...>
     found = set()
     for raw in raws:
         # As written; decoded exactly as CommonMark does; with entities decoded but
@@ -125,32 +127,66 @@ def _candidates(text: str) -> tuple[set[str], bool]:
     return found, cut_off
 
 
-def reference_problem(project_dir: Path, native: str, canonical: str) -> str | None:
-    """Why moving the rule could break a relative reference in it, or None.
+def _files(path: Path) -> list[str]:
+    """The resource's files relative to it ("" when the resource is a single file)."""
+    if not path.is_dir():
+        return [""]
 
-    breaks_reference: something the rule could name reaches an existing file from the
-    native path but a different path from the canonical one. References that leave
-    both folders (like ../../docs/guide.md) resolve the same from either path because
-    canonical paths keep the native depth; references to siblings do not.
-    unclear_reference: a recognized reference has no complete destination, or one was
-    too long to check completely, so the rule stays in place rather than risk
-    breaking it.
+    def fail(error: OSError) -> None:
+        raise error
+
+    return sorted(os.path.relpath(os.path.join(dirpath, name), path).replace(os.sep, "/")
+                  for dirpath, _, names in os.walk(path, onerror=fail) for name in names)
+
+
+def reference_problem(project_dir: Path, native: str, canonical: str) -> str | None:
+    """Why moving a rule or skill could break a relative reference in it, or None.
+
+    breaks_reference: something a file in the resource could name reaches an existing
+    path from the native location but a different one after the move. A resource moves
+    as a whole, so a reference into itself follows it, and one that leaves the tool's
+    folder (like ../../docs/guide.md) resolves the same because canonical paths keep the
+    native depth; a reference to a sibling (another rule or skill, or ../shared.md) does
+    not. Each file's references are resolved from its own folder and, in a skill, also
+    from the skill's root, where its scripts usually run.
+    unclear_reference: a recognized Markdown reference has no complete destination, one
+    was too long to check completely, or the resource could not be read, so it stays in
+    place rather than risk breaking a reference.
     """
     root = Path(project_dir)
+    is_dir = (root / native).is_dir()
+
+    def inside(base: str, rel: str) -> str:
+        return f"{base}/{rel}" if rel else base
+
+    def moved(path: str) -> str:
+        """Where a path inside the resource ends up after the move."""
+        if path == native or path.startswith(native + "/"):
+            return canonical + path[len(native):]
+        return path
+
+    unclear = False
     try:
-        text = (root / native).read_text(encoding="utf-8", errors="replace")
+        for rel in _files(root / native):
+            data = (root / inside(native, rel)).read_bytes()
+            if b"\0" in data:  # binary assets name no files
+                continue
+            text = data.decode("utf-8", errors="replace")
+            candidates, cut_off = _candidates(text)
+            bases = [(os.path.dirname(inside(native, rel)), os.path.dirname(inside(canonical, rel)))]
+            if is_dir:
+                bases.append((native, canonical))
+            for ref in candidates:
+                for native_base, canonical_base in bases:
+                    from_native = os.path.normpath(os.path.join(native_base, ref))
+                    if (os.path.normpath(os.path.join(canonical_base, ref)) != moved(from_native)
+                            and os.path.lexists(root / from_native)):
+                        return "breaks_reference"
+            markdown = (rel or native).endswith((".md", ".mdc", ".markdown"))
+            unclear = unclear or cut_off or (markdown and _unclear(text))
     except OSError:
         return "unclear_reference"
-    native_dir, canonical_dir = os.path.dirname(native), os.path.dirname(canonical)
-    candidates, cut_off = _candidates(text)
-    for ref in candidates:
-        from_native = os.path.normpath(os.path.join(native_dir, ref))
-        if (os.path.normpath(os.path.join(canonical_dir, ref)) != from_native
-                and os.path.lexists(root / from_native)):
-            return "breaks_reference"
-    if cut_off or _unclear(text):
-        return "unclear_reference"
-    return None
+    return "unclear_reference" if unclear else None
 
 
 def link_target(native: str, canonical: str) -> str:
@@ -184,7 +220,7 @@ def plan(project_dir: Path, doc: dict | None = None) -> tuple[list[dict], list[d
                 reason = "name_collision"
             elif not all(_no_symlinked_parent(root, p) for p in (c["path"], c["canonical"], backup)):
                 reason = "unsafe_path"
-            elif c["type"] == "rule" and (problem := reference_problem(root, c["path"], c["canonical"])):
+            elif problem := reference_problem(root, c["path"], c["canonical"]):
                 reason = problem
             elif os.path.lexists(root / c["canonical"]):
                 reason = "canonical_exists"
