@@ -795,6 +795,13 @@ def test_grok_configuration_is_never_adopted(tmp_path):
     ("scripts/run.sh", "#!/bin/sh\n. ../../shared/lib.sh\n", ".claude/skills/shared/lib.sh"),
     # Scripts usually run from the skill's root, so their paths are relative to it.
     ("scripts/run.py", "open('../../settings.json')\n", ".claude/settings.json"),
+    # Equivalent spellings of a parent path: leading ./ segments, a folder before the
+    # ../, and a prefix the guard cannot resolve ($0's folder is the script's folder).
+    ("scripts/run.sh", "#!/bin/sh\ncat ./../shared.txt\n", ".claude/skills/shared.txt"),
+    ("scripts/run.sh", "#!/bin/sh\ncat ././../shared.txt\n", ".claude/skills/shared.txt"),
+    ("scripts/run.sh", "#!/bin/sh\ncat scripts/../../shared.txt\n", ".claude/skills/shared.txt"),
+    ("scripts/run.sh", '#!/bin/sh\ncat "$(dirname "$0")/../../shared.txt"\n', ".claude/skills/shared.txt"),
+    ("scripts/sub/run.sh", '#!/bin/sh\ncat "$(dirname "$0")/../../../shared.txt"\n', ".claude/skills/shared.txt"),
 ])
 def test_a_skill_referencing_a_file_outside_its_folder_is_left_in_place(tmp_path, rel, text, outside):
     project = happy_repo(tmp_path)
@@ -811,11 +818,29 @@ def test_a_skill_referencing_a_file_outside_its_folder_is_left_in_place(tmp_path
     assert not os.path.lexists(project / ".ctx/skills/review")
 
 
+def test_add_refuses_a_skill_whose_script_reaches_outside_it(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write_skill(project, ".claude/skills", "deploy", "claude")
+    write(project, ".claude/skills/deploy/scripts/run.sh", "#!/bin/sh\ncat ./../shared.txt\n", mode=0o755)
+    write(project, ".claude/skills/shared.txt", "shared\n")
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="breaks_reference"):
+        add_cmd.run(project, ".claude/skills/deploy")
+    assert snapshot(project) == before
+    assert not os.path.lexists(project / ".ctx/skills/deploy")
+    assert not os.path.lexists(core.sources_dir(project) / ".claude/skills/deploy")
+
+
 def test_references_inside_a_skill_or_beyond_its_tool_folder_do_not_block_adoption(tmp_path):
     project = happy_repo(tmp_path)
     write(project, ".claude/skills/review/references/more.md",
           "Back to [the skill](../SKILL.md), the [guide](guide.md), and [docs](../../../../docs/guide.md).\n")
-    write(project, ".claude/skills/review/scripts/run.sh", "#!/bin/sh\ncat ../references/guide.md\n", mode=0o755)
+    # Parent paths that stay inside the skill, from its root or from the script's folder.
+    write(project, ".claude/skills/review/scripts/run.sh",
+          '#!/bin/sh\ncat ../references/guide.md ./scripts/../references/guide.md\n'
+          'cat "$(dirname "$0")/../references/guide.md"\n', mode=0o755)
     (project / ".claude/skills/review/assets").mkdir()
     # Binary assets name no files, even when their bytes happen to look like a path.
     (project / ".claude/skills/review/assets/logo.png").write_bytes(b"\x89PNG\r\n\x00](../../shared.md)\x00")

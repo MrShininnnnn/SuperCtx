@@ -49,9 +49,12 @@ _REFERENCES = [
 ]
 
 # Where a destination may start: after a link, a definition, an HTML attribute, an
-# @path import (resolved relative to the file), or an autolink's <; and at any ../
-# (how scripts and prose name a parent folder), which is part of the destination.
-_STARTS = re.compile(r"""\]\(|\]:|\b(?:href|src)\s*=|(?:^|(?<=\s))@|<|(?<![\w.~/-])(?=\.\./)""", re.I | re.M)
+# @path import (resolved relative to the file), or an autolink's <; and at every ../,
+# whatever precedes it. A path that climbs out of a skill must, just before its last
+# step out, be at the folder it is resolved from (the skill's root or the file's
+# folder), so the candidate starting at that ../ reaches the same place however the
+# path began: ./../x, dir/../../x, or an unresolvable "$(dirname "$0")/../x.
+_STARTS = re.compile(r"""\]\(|\]:|\b(?:href|src)\s*=|(?:^|(?<=\s))@|<|(?=\.\./)""", re.I | re.M)
 _END = re.compile(r"""[\s)>"'`<]""")
 _SPACE = re.compile(r"\s*")
 # The scan reads at most _WINDOW characters of a line from each start. A destination
