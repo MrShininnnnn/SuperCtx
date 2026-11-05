@@ -7,6 +7,7 @@ finished by the next sync. See architecture/v2-manifest-and-ownership.md.
 
 from __future__ import annotations
 
+import html
 import os
 import re
 import shutil
@@ -30,41 +31,73 @@ def _no_symlinked_parent(root: Path, rel: str) -> bool:
 
 
 # Where a rule can name another file. Each kind has an anchor that marks a reference
-# and a full pattern for its destination. An anchor the full pattern cannot account for
-# is a reference whose destination is unknown. A Markdown destination is either <...>
+# and a full pattern for its destination; an anchor the full pattern cannot account for
+# is a reference whose destination is unclear. A Markdown destination is either <...>
 # (may contain spaces) or a run without spaces in which parentheses are balanced one
-# level deep; it must end the destination (`(?=\s|\))` stops a partial match).
-_DEST = r"(?:<([^<>\n]*)>|((?:[^\s()<\\]|\\.|\([^\s()]*\))+))"
+# level deep. Each full pattern must reach where its destination ends, so a partial
+# match never counts as parsed; an empty inline destination needs its closing ).
+# A backslash escapes only ASCII punctuation; before anything else it is literal.
+_DEST = r"(?:<([^<>\n]*)>|((?:[^\s()<\\]|\\[!-/:-@\[-`{-~]?|\([^\s()]*\))+))"
 _REFERENCES = [
     # [text](dest), ![alt](dest), [text]()
-    (re.compile(r"\]\("), re.compile(r"(?P<a>\]\()\s*(?:" + _DEST + r")?(?=\s|\))")),
+    (re.compile(r"\]\("), re.compile(r"(?P<a>\]\()\s*(?:\)|" + _DEST + r"(?=\s|\)))")),
     # [label]: dest, with the destination on the same or the next line
     (re.compile(r"\]:"), re.compile(r"^ {0,3}\[[^\]]+(?P<a>\]:)[ \t]*(?:\n[ \t]*)?" + _DEST + r"(?=\s|$)", re.M)),
-    # HTML attributes, quoted or not
-    (re.compile(r"\b(?:href|src)\s*="),
-     re.compile(r"""\b(?P<a>href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""")),
-    # @path imports, resolved relative to the file; `\ ` escapes a space
-    (None, re.compile(r"(?:^|\s)@((?:\\.|[^\s\\`])+)")),
+    # HTML attributes, quoted or not; attribute names are case-insensitive
+    (re.compile(r"\b(?:href|src)\s*=", re.I),
+     re.compile(r"""\b(?P<a>href|src)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+(?=[\s>]|$))""", re.I)),
 ]
+
+# Where a destination may start: after a link, a definition, an HTML attribute, an
+# @path import (resolved relative to the file), or an autolink's <.
+_STARTS = re.compile(r"""\]\(|\]:|\b(?:href|src)\s*=|(?:^|(?<=\s))@|<""", re.I | re.M)
+_END = re.compile(r"""[\s)>"'`<]""")
+_SPACE = re.compile(r"\s*")
+_WINDOW = 512
 _ESCAPE = re.compile(r"\\(.)")
+# CommonMark decodes in one pass: a backslash escapes ASCII punctuation (so `\&amp;`
+# stays literal), and entities are replaced.
+_COMMONMARK = re.compile(r"\\([!-/:-@\[-`{-~])|(&(?:#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{0,31});)")
 
 
-def _destinations(text: str) -> set[str] | None:
-    """Every file path a rule may refer to, in each spelling a reader could resolve,
-    or None if a reference's destination cannot be determined."""
-    found = set()
+def _commonmark(text: str) -> str:
+    return _COMMONMARK.sub(lambda m: m.group(1) if m.group(1) is not None else html.unescape(m.group(2)), text)
+
+
+def _unclear(text: str) -> bool:
+    """True if a recognized reference has no complete destination."""
     for anchor, pattern in _REFERENCES:
-        matches = list(pattern.finditer(text))
-        if anchor is not None:
-            parsed = {m.start("a") for m in matches}
-            if any(a.start() not in parsed for a in anchor.finditer(text)):
-                return None
-        for match in matches:
-            anchor_group = pattern.groupindex.get("a")
-            dest = next((g for i, g in enumerate(match.groups(), 1) if g is not None and i != anchor_group), "")
-            dest = dest.split("#", 1)[0]
-            for spelling in (dest, _ESCAPE.sub(r"\1", dest)):
-                found |= {spelling, unquote(spelling)}
+        parsed = {m.start("a") for m in pattern.finditer(text)}
+        if any(a.start() not in parsed for a in anchor.finditer(text)):
+            return True
+    return False
+
+
+def _candidates(text: str) -> set[str]:
+    """Every path a reference in the rule could name, whatever parser reads it.
+
+    Parsers disagree on details (which characters a backslash escapes, where an
+    autolink ends), so instead of one grammar this takes, after every place a
+    destination may start, each prefix of the rest of that line that ends where a
+    destination can end, in every spelling a reader could decode it to.
+    """
+    raws = set()
+    for start in _STARTS.finditer(text):
+        # The destination may start right away, after whitespace (a definition's may
+        # be on the next line), or after an opening < or quote.
+        first = _SPACE.match(text, start.end()).end()
+        starts = {start.end(), first} | ({first + 1} if text[first:first + 1] in ("<", '"', "'") else set())
+        for pos in starts:
+            line = text[pos:pos + _WINDOW].split("\n", 1)[0]
+            raws |= {line[:m.start()] for m in _END.finditer(line)} | {line}
+    found = set()
+    for raw in raws:
+        # As written; decoded exactly as CommonMark does; with entities decoded but
+        # backslashes literal (HTML attributes); with every backslash escape removed
+        # (`@team\ guide.md` imports).
+        for spelling in {raw, _commonmark(raw), html.unescape(raw), _ESCAPE.sub(r"\1", raw)}:
+            path = re.split(r"[?#]", spelling, maxsplit=1)[0]  # the URL's path component
+            found |= {spelling, path, unquote(path)}
     found.discard("")  # a link to a heading in the rule itself, or an empty link
     return found
 
@@ -72,27 +105,26 @@ def _destinations(text: str) -> set[str] | None:
 def reference_problem(project_dir: Path, native: str, canonical: str) -> str | None:
     """Why moving the rule could break a relative reference in it, or None.
 
-    breaks_reference: a reference reaches an existing file from the native path but
-    would reach a different path from the canonical one. References that leave both
-    folders (like ../../docs/guide.md) resolve the same from either path because
+    breaks_reference: something the rule could name reaches an existing file from the
+    native path but a different path from the canonical one. References that leave
+    both folders (like ../../docs/guide.md) resolve the same from either path because
     canonical paths keep the native depth; references to siblings do not.
-    unclear_reference: a reference's destination cannot be determined, so the rule
-    stays in place rather than risk breaking it.
+    unclear_reference: a recognized reference has no complete destination, so the
+    rule stays in place rather than risk breaking it.
     """
     root = Path(project_dir)
     try:
         text = (root / native).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return "unclear_reference"
-    refs = _destinations(text)
-    if refs is None:
-        return "unclear_reference"
     native_dir, canonical_dir = os.path.dirname(native), os.path.dirname(canonical)
-    for ref in refs:
+    for ref in _candidates(text):
         from_native = os.path.normpath(os.path.join(native_dir, ref))
         if (os.path.normpath(os.path.join(canonical_dir, ref)) != from_native
                 and os.path.lexists(root / from_native)):
             return "breaks_reference"
+    if _unclear(text):
+        return "unclear_reference"
     return None
 
 

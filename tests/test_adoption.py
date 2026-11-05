@@ -535,6 +535,15 @@ def test_a_reference_that_reaches_outside_the_rules_folder_resolves_from_both_lo
     (".claude/rules/review.md", "@team\\ guide.txt", ".claude/rules/team guide.txt"),
     (".cursor/rules/review.mdc", "[guide][ref]\n\n[ref]:\n    guide.md", ".cursor/rules/guide.md"),
     (".cursor/rules/review.mdc", "<a href=guide.md>guide</a>", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", '<a HREF="guide.md">Guide</a>', ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "[guide](guide.md?view=raw)", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "[guide](guide.md?view=raw#setup)", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", '<a href="guide&#46;md">Guide</a>', ".cursor/rules/guide.md"),
+    # One fixture per spelling the guard tries: as written, exact CommonMark decoding,
+    # HTML decoding (backslash literal), and every backslash escape removed.
+    (".cursor/rules/review.mdc", "[guide](a\\_b&#46;md)", ".cursor/rules/a\\_b&#46;md"),
+    (".cursor/rules/review.mdc", "[guide](a\\&#46;b&#46;md)", ".cursor/rules/a&#46;b.md"),
+    (".cursor/rules/review.mdc", '<a href="a\\_b&#46;md">Guide</a>', ".cursor/rules/a\\_b.md"),
 ])
 def test_a_rule_whose_local_reference_would_break_is_left_in_place(tmp_path, native, reference, sibling):
     project = happy_repo(tmp_path)
@@ -559,6 +568,8 @@ def test_a_rule_whose_local_reference_would_break_is_left_in_place(tmp_path, nat
     "[guide](a(b(c)).md)",                # parentheses nested deeper than the guard parses
     "[guide][ref]\n\n[ref]:\n\n guide.md",  # definition whose destination is not found
     "<a href=>guide</a>",                 # attribute with no value
+    "[guide]( <unclosed)",                # empty destination without its closing )
+    "<a href=gui\"de.md>guide</a>",       # unquoted value that ends partway
 ])
 def test_a_rule_with_a_reference_the_guard_cannot_resolve_is_left_in_place(tmp_path, reference):
     # Uncertainty preserves the rule: a recognized link or import whose complete
