@@ -21,7 +21,8 @@ SuperCtx provides a central project-local context layer using a hub-and-shim mod
 
 - **`.ctx/SUPERCTX.md`** is the canonical project context hub.
 - **Tool-specific instruction files** (e.g. `.claude/CLAUDE.md`, `.codex/AGENTS.md`) are generated shims/adapters pointing to the hub.
-- **`.ctx/sources/`** contains inactive recovery copies of original instruction files.
+- **Rules, skills, and connected folders** (e.g. `.claude/rules/python.md`, `.claude/skills/review/`, `docs/architecture/`, `.planning/`) live under `.ctx/` and are symlinked back to their original paths, so each tool keeps finding them where it expects.
+- **`.ctx/sources/`** contains inactive recovery copies of the originals.
 
 ## Edit Policy
 
@@ -31,6 +32,7 @@ When updating shared project context, the agent edits `.ctx/SUPERCTX.md` directl
 | --- | --- |
 | `.ctx/SUPERCTX.md` | Author here. Canonical editable hub. Edit it to update shared project context. `/superctx:sync` preserves these edits. |
 | Tool files (`.claude/CLAUDE.md`, `.codex/AGENTS.md`, `.agy/ANTIGRAVITY.md`, …) | Generated shims. Do not edit. Edit `.ctx/SUPERCTX.md` instead. |
+| Linked rules, skills, and folders (`.claude/rules/…`, `.claude/skills/…`, `.cursor/…`, `.grok/skills/…`, connected folders) | Edit normally, through the original path or under `.ctx/`: both are the same file. Never replace the link itself with a copy. |
 | `.ctx/sources/**` | Backup only. Do not read, import, or edit as active context. Not live context. |
 
 ## Agent Rules
@@ -49,14 +51,16 @@ When updating shared project context, the agent edits `.ctx/SUPERCTX.md` directl
    >
    > This will:
    > - create `.ctx/SUPERCTX.md`
-   > - back up the original instruction files under `.ctx/sources/`
+   > - back up the original instruction files, rules, and skills under `.ctx/sources/`
    > - replace the live instruction files with generated shims pointing to the hub
+   > - move supported rules and skills into `.ctx/` and leave a link at their original path, so tools keep using them
    >
    > Proceed?
 
    Once the user confirms, run `/superctx:sync`. If the user declines, leave the repo unchanged.
 9. **Guide legacy or broken setups to repair/migration/inspection.**
    - If `/superctx:sync` reports `managed_needs_repair` and the recommended action is `repair`, offer to repair the broken or missing shims and run `/superctx:sync` internally after getting consent.
+   - If it reports unresolved conflicts (`native_edited`, `native_replaced`, `link_retargeted`, `canonical_missing`), nothing was changed. Explain each one and offer to resolve it: move the edited content into its `.ctx/` copy (the hub for a pointer), remove the conflicting file or link, and run `/superctx:sync` again. Restore a missing `.ctx/` copy from version control.
    - If it reports `inspect` (due to missing or invalid manifest), explain the problem clearly and do not run `sync` or `init`.
    - If it reports `legacy` layout, explain the situation clearly, warning that migration/recovery is required. Preserve existing instruction contents and use explicit user-approved migration steps.
    Never run `/superctx:sync` or mutate files on a legacy/inspect state without explicit user consent.
@@ -83,7 +87,7 @@ Use these phrases to report successful execution when the command output is heal
 ## Command Guide
 
 - `/superctx:sync`: Global setup, check, repair, and report command.
-- `/superctx:add <path>`: Tracks a local custom candidate file.
+- `/superctx:add <path>`: Connects one instruction file, rule, skill, or reference or planning folder.
 - `/using-superctx`: Agent-facing reference skill.
 
 ## Example Workflows

@@ -1,24 +1,26 @@
 # Tool Compatibility
 
-Which tools SuperCtx adopts resources for, and how each was verified. A resource type is adopted only when its row is **supported**; everything else is discovered and left in place with a reason.
+Which tools SuperCtx adopts resources for, and how each was verified, as of SuperCtx 0.2.0. A resource type is adopted only when its row is **supported**; everything else is discovered and left in place with a reason.
 
 | Tool | Resource | Native path | Published as | Result | Verified with | Date |
 |---|---|---|---|---|---|---|
 | Claude Code | instructions | `CLAUDE.md`, `.claude/CLAUDE.md` | pointer (`@` import) | supported | v0.1 behavior | 2026-05-29 |
-| Claude Code | rule | `.claude/rules/**/*.md` | relative file symlink | supported | Claude Code 2.1.200, macOS 26 | 2026-11-02 |
-| Claude Code | skill | `.claude/skills/<name>/` | relative directory symlink | supported | Claude Code 2.1.200, macOS 26 | 2026-11-02 |
-| Cursor | rule | `.cursor/rules/**/*.mdc` | relative file symlink | supported | Cursor Agent CLI 2026.10.22-27dcf5f (`grok-4.7-medium`), macOS 26 | 2026-11-03 |
-| Cursor | skill | `.cursor/skills/<name>/` | relative directory symlink | supported | Cursor Agent CLI 2026.10.22-27dcf5f (`grok-4.7-medium`), macOS 26 | 2026-11-04 |
-| Cursor | skill (reused) | `.claude/skills/<name>/` | the Claude Code link | supported | Cursor Agent CLI 2026.10.22-27dcf5f (`grok-4.7-medium`), macOS 26 | 2026-11-04 |
-| Grok Build | instructions (reused) | `CLAUDE.md`, `AGENTS.md` | the existing pointers | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
-| Grok Build | skill | `.grok/skills/<name>/` | relative directory symlink | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
-| Grok Build | skill (reused) | `.claude/skills/<name>/` | the Claude Code link | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
-| Grok Build | rule (reused) | `.claude/rules/**/*.md` | the Claude Code link | limited: `paths` scope ignored | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
+| Claude Code | rule | `.claude/rules/**/*.md` | relative file symlink | supported | Claude Code 2.1.200, macOS 26 | 2026-11-05 |
+| Claude Code | skill | `.claude/skills/<name>/` | relative directory symlink | supported | Claude Code 2.1.200, macOS 26 | 2026-11-05 |
+| Cursor | rule | `.cursor/rules/**/*.mdc` | relative file symlink | supported | Cursor Agent CLI 2026.11.05-86047df (`grok-4.7-medium`), macOS 26 | 2026-11-05 |
+| Cursor | skill | `.cursor/skills/<name>/` | relative directory symlink | supported | Cursor Agent CLI 2026.11.05-86047df (`grok-4.7-medium`), macOS 26 | 2026-11-05 |
+| Cursor | skill (reused) | `.claude/skills/<name>/` | the Claude Code link | supported | Cursor Agent CLI 2026.11.05-86047df (`grok-4.7-medium`), macOS 26 | 2026-11-05 |
+| Grok Build | instructions (reused) | `CLAUDE.md`, `AGENTS.md` | the existing pointers | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-05 |
+| Grok Build | skill | `.grok/skills/<name>/` | relative directory symlink | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-05 |
+| Grok Build | skill (reused) | `.claude/skills/<name>/` | the Claude Code link | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-05 |
+| Grok Build | rule (reused) | `.claude/rules/**/*.md` | the Claude Code link | limited: `paths` scope ignored | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-05 |
 | OpenAI Codex | skill | `.agents/skills/<name>/` | — | unsupported (not verified) | Codex CLI not runnable | 2026-11-04 |
-| Claude Code | planning folder (write) | `.planning/`, or any folder added | relative directory symlink | supported | Claude Code 2.1.200 (`haiku`), macOS 26 | 2026-11-04 |
-| Cursor | planning folder (write) | `.planning/`, or any folder added | relative directory symlink | supported | Cursor Agent CLI 2026.10.22-27dcf5f (`grok-4.7-medium`), macOS 26 | 2026-11-04 |
-| Grok Build | planning folder (write) | `.planning/`, or any folder added | relative directory symlink | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-04 |
-| Claude Code | reference folder (read) | any folder added | relative directory symlink | supported | Claude Code 2.1.200 (`haiku`), macOS 26 | 2026-11-04 |
+| Claude Code | planning folder (write) | `.planning/`, or any folder added | relative directory symlink | supported | Claude Code 2.1.200 (`haiku`), macOS 26 | 2026-11-05 |
+| Cursor | planning folder (write) | `.planning/`, or any folder added | relative directory symlink | supported | Cursor Agent CLI 2026.11.05-86047df (`grok-4.7-medium`), macOS 26 | 2026-11-05 |
+| Grok Build | planning folder (write) | `.planning/`, or any folder added | relative directory symlink | supported | Grok Build 1.0.70 (`grok-4.7`), macOS 26 | 2026-11-05 |
+| Claude Code | reference folder (read) | any folder added | relative directory symlink | supported | Claude Code 2.1.200 (`haiku`), macOS 26 | 2026-11-05 |
+
+Instruction files for other tools (`AGENTS.md` for OpenAI Codex and others, `GEMINI.md` for Gemini CLI, `.github/copilot-instructions.md` for GitHub Copilot, `.codex/AGENTS.md`) are published as pointers to `.ctx/SUPERCTX.md`, as in v0.1. Their paths are cited in `scripts/superctx/conventions.toml`; those tools were not re-run against v0.2.
 
 "Reused" rows add no files: the tool reads another tool's native path, so the resource SuperCtx already published there serves both.
 
@@ -44,3 +46,7 @@ The same checks were run first on native (unlinked) folders to confirm they dist
 Real tools occasionally answer wrongly: Claude Code (`haiku`) once answered `NONE` for the active scoped rule and passed on three reruns. Re-run a failing check before treating it as a regression.
 
 Re-run the checks when a tool's version changes, and add a row (with `publish = "link"` and `verified_behavior` in `scripts/superctx/conventions.toml`) only after they pass.
+
+## Outside v0.2
+
+SuperCtx 0.2 manages root instructions, rules, complete skills, and reference or planning folders connected with `/superctx:add`. It does not discover, move, or link commands, subagent definitions, hooks, MCP configuration, local settings, plugins, or any other tool configuration, and no folder inside a tool's own folder (`.claude/`, `.cursor/`, `.grok/`, `.codex/`, `.gemini/`, `.github/`, `.agents/`) can be connected. It does not coordinate tasks between tools or synchronize arbitrary directories.
