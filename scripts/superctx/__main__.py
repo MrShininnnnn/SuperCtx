@@ -26,6 +26,8 @@ REASONS = {
     "contains_symlink": "it contains symlinks, which could break after moving it",
     "no_skill_md": "the folder has no SKILL.md",
     "name_collision": "another resource would get the same name or canonical path",
+    "breaks_reference": "it links to a file next to it that would not resolve from its canonical path in .ctx/",
+    "unclear_reference": "it has a link or import whose destination SuperCtx cannot determine, so moving it could break it",
     "canonical_exists": "something already exists at its canonical path in .ctx/",
     "backup_exists": "a backup already exists for it in .ctx/sources/",
     "backup_exists_and_live_has_edits": "inspect the backup in .ctx/sources/ against your local version",

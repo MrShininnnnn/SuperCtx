@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from superctx import add as add_cmd, adopt, core, init as init_cmd, manifest, shim, sync as sync_cmd
+from superctx import add as add_cmd, adopt, core, init as init_cmd, manifest, registry, shim, sync as sync_cmd
 from test_v2_migration_safety import snapshot
 
 CLAUDE = "# Claude\n\nRun the tests before committing.\n"
@@ -353,7 +353,13 @@ def test_link_conflicts_are_reported_without_writing(tmp_path, damage, path, rea
 
 # --- left in place ----------------------------------------------------------
 
-def test_incompatible_resources_are_left_in_place_with_a_reason(tmp_path):
+def test_incompatible_resources_are_left_in_place_with_a_reason(tmp_path, monkeypatch):
+    # A rule folder whose link behavior has not been verified with the real tool.
+    convs = registry.load_conventions()
+    for conv in convs:
+        if conv["path"] == ".cursor/rules/":
+            del conv["publish"]
+    monkeypatch.setattr(registry, "load_conventions", lambda path=None: convs)
     project = happy_repo(tmp_path)
     write(project, ".cursor/rules/style.mdc", "---\nglobs: src/**\n---\nStyle.\n")
     write(project, ".claude/skills/notes/README.md", "no SKILL.md here\n")
@@ -463,6 +469,242 @@ def test_sync_resumes_an_interrupted_setup(tmp_path, monkeypatch, stage):
     assert result["final_state"] == "healthy", result
     assert snapshot(project, times=False) == expected
     assert all(n.get("published", True) for n in manifest.load_v2(project)["natives"])
+
+
+# --- Cursor rules -----------------------------------------------------------
+
+CURSOR_RULE = "---\ndescription:\nglobs: src/**/*.py\nalwaysApply: false\n---\n\nSee [the guide](../../docs/guide.md).\n"
+
+
+def test_cursor_rules_are_linked_byte_for_byte_from_their_own_canonical_folder(tmp_path):
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/python.mdc", CURSOR_RULE)
+    write(project, ".cursor/rules/frontend/components.mdc", CURSOR_RULE)
+
+    result = sync_cmd.run(project)
+
+    assert result["final_state"] == "healthy"
+    assert sorted(result["init_result"]["linked"]) == [
+        ".claude/rules/python.md", ".claude/skills/review",
+        ".cursor/rules/frontend/components.mdc", ".cursor/rules/python.mdc",
+    ]
+    assert os.readlink(project / ".cursor/rules/python.mdc") == "../../.ctx/cursor-rules/python.mdc"
+    assert os.readlink(project / ".cursor/rules/frontend/components.mdc") == "../../../.ctx/cursor-rules/frontend/components.mdc"
+    for rel in (".cursor/rules/python.mdc", ".cursor/rules/frontend/components.mdc"):
+        # Activation metadata and relative references are untouched: no conversion happens.
+        assert (project / rel).read_text(encoding="utf-8") == CURSOR_RULE
+        assert (core.sources_dir(project) / rel).read_text(encoding="utf-8") == CURSOR_RULE
+    doc = manifest.load_v2(project)
+    assert {(r["id"], r["canonical"]) for r in doc["resources"] if r["type"] == "rule"} == {
+        ("rule-python", ".ctx/rules/python.md"),
+        ("cursor-rule-python", ".ctx/cursor-rules/python.mdc"),
+        ("cursor-rule-frontend-components", ".ctx/cursor-rules/frontend/components.mdc"),
+    }
+    assert sync_cmd.run(project)["mutated"] is False
+
+
+def test_a_reference_that_reaches_outside_the_rules_folder_resolves_from_both_locations(tmp_path):
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/python.mdc", CURSOR_RULE)
+    write(project, ".cursor/rules/team.mdc",
+          "[a](<../../docs/team guide.md>) [b](../../docs/team%20guide.md) [c][ref]\n\n[ref]: ../../docs/guide.md\n")
+    write(project, "docs/guide.md", "# Guide\n")
+    write(project, "docs/team guide.md", "# Team guide\n")
+
+    result = sync_cmd.run(project)
+
+    assert {".cursor/rules/python.mdc", ".cursor/rules/team.mdc"} <= set(result["init_result"]["linked"])
+    for folder in (".cursor/rules", ".ctx/cursor-rules"):
+        for ref in ("../../docs/guide.md", "../../docs/team guide.md"):
+            assert (project / folder / ref).resolve() == (project / ref[6:]).resolve()
+
+
+@pytest.mark.parametrize("native, reference, sibling", [
+    (".cursor/rules/review.mdc", "[guide](guide.md)", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "![diagram](./img/flow.png)", ".cursor/rules/img/flow.png"),
+    (".claude/rules/review.md", "See [the guide](guide.md#setup).", ".claude/rules/guide.md"),
+    (".claude/rules/review.md", "@guide.md", ".claude/rules/guide.md"),
+    (".cursor/rules/review.mdc", "[guide](<team guide.md>)", ".cursor/rules/team guide.md"),
+    (".cursor/rules/review.mdc", "[guide](team%20guide.md)", ".cursor/rules/team guide.md"),
+    (".cursor/rules/review.mdc", "[guide][ref]\n\n[ref]: guide.md", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "[guide][ref]\n\n  [ref]: <team guide.md> \"Team\"", ".cursor/rules/team guide.md"),
+    (".cursor/rules/review.mdc", "[guide](guide(v2).md \"Guide\")", ".cursor/rules/guide(v2).md"),
+    (".cursor/rules/review.mdc", "[guide](team\\_guide.md)", ".cursor/rules/team_guide.md"),
+    (".cursor/rules/review.mdc", '<a href="guide.md">guide</a>', ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "<img src='img/flow.png'>", ".cursor/rules/img/flow.png"),
+    (".claude/rules/review.md", "@team\\ guide.txt", ".claude/rules/team guide.txt"),
+    (".cursor/rules/review.mdc", "[guide][ref]\n\n[ref]:\n    guide.md", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "<a href=guide.md>guide</a>", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", '<a HREF="guide.md">Guide</a>', ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "[guide](guide.md?view=raw)", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", "[guide](guide.md?view=raw#setup)", ".cursor/rules/guide.md"),
+    (".cursor/rules/review.mdc", '<a href="guide&#46;md">Guide</a>', ".cursor/rules/guide.md"),
+    # One fixture per spelling the guard tries: as written, exact CommonMark decoding,
+    # HTML decoding (backslash literal), and every backslash escape removed.
+    (".cursor/rules/review.mdc", "[guide](a\\_b&#46;md)", ".cursor/rules/a\\_b&#46;md"),
+    (".cursor/rules/review.mdc", "[guide](a\\&#46;b&#46;md)", ".cursor/rules/a&#46;b.md"),
+    (".cursor/rules/review.mdc", '<a href="a\\_b&#46;md">Guide</a>', ".cursor/rules/a\\_b.md"),
+])
+def test_a_rule_whose_local_reference_would_break_is_left_in_place(tmp_path, native, reference, sibling):
+    project = happy_repo(tmp_path)
+    write(project, native, f"Follow this.\n\n{reference}\n")
+    write(project, sibling, "# Guide\n")
+    before = (project / native).read_bytes()
+
+    result = sync_cmd.run(project)
+
+    assert {"path": native, "type": "rule", "reason": "breaks_reference"} in result["init_result"]["left_in_place"]
+    assert native not in result["init_result"]["linked"]
+    assert not os.path.islink(project / native) and (project / native).read_bytes() == before
+    assert not os.path.lexists(core.sources_dir(project) / native)
+    assert result["final_state"] == "healthy"
+    # The rest of the one-step setup still happens, and the rule stays reported.
+    assert ".claude/rules/python.md" in result["init_result"]["linked"]
+    assert {"path": native, "type": "rule", "reason": "breaks_reference"} in sync_cmd.run(project)["left_in_place"]
+
+
+@pytest.mark.parametrize("reference", [
+    "[guide](<team guide.md",             # angle bracket never closed
+    "[guide](a(b(c)).md)",                # parentheses nested deeper than the guard parses
+    "[guide][ref]\n\n[ref]:\n\n guide.md",  # definition whose destination is not found
+    "<a href=>guide</a>",                 # attribute with no value
+    "[guide]( <unclosed)",                # empty destination without its closing )
+    "<a href=gui\"de.md>guide</a>",       # unquoted value that ends partway
+])
+def test_a_rule_with_a_reference_the_guard_cannot_resolve_is_left_in_place(tmp_path, reference):
+    # Uncertainty preserves the rule: a recognized link or import whose complete
+    # destination cannot be determined could be broken by the move.
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/review.mdc", f"Follow this.\n\n{reference}\n")
+    before = (project / ".cursor/rules/review.mdc").read_bytes()
+
+    result = sync_cmd.run(project)
+
+    assert {"path": ".cursor/rules/review.mdc", "type": "rule", "reason": "unclear_reference"} in \
+        result["init_result"]["left_in_place"]
+    assert not os.path.islink(project / ".cursor/rules/review.mdc")
+    assert (project / ".cursor/rules/review.mdc").read_bytes() == before
+    assert ".claude/rules/python.md" in result["init_result"]["linked"]
+
+
+LONG_NAME = "a" * 180 + ".md"
+
+
+@pytest.mark.parametrize("reference", [
+    "[guide](" + "%61" * 180 + ".md)",              # 543 characters encoded
+    "[guide](<" + "%61" * 180 + ".md>)",
+    "[guide](<" + "dir one/" * 70 + "guide.md>)",   # spaces allowed inside <...>
+    '<a href="' + "&#97;" * 180 + '.md">guide</a>',
+    '<a href="' + "dir one/" * 70 + 'guide.md">guide</a>',  # spaces allowed inside quotes
+])
+def test_a_reference_longer_than_the_scan_window_is_unclear(tmp_path, reference):
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/review.mdc", f"Follow this.\n\n{reference}\n")
+    write(project, f".cursor/rules/{LONG_NAME}", "# Guide\n")
+    before = (project / ".cursor/rules/review.mdc").read_bytes()
+
+    result = sync_cmd.run(project)
+
+    assert {"path": ".cursor/rules/review.mdc", "type": "rule", "reason": "unclear_reference"} in \
+        result["init_result"]["left_in_place"]
+    assert not os.path.islink(project / ".cursor/rules/review.mdc")
+    assert (project / ".cursor/rules/review.mdc").read_bytes() == before
+    assert not os.path.lexists(core.sources_dir(project) / ".cursor/rules/review.mdc")
+    assert not os.path.lexists(project / ".ctx/cursor-rules/review.mdc")
+    assert ".claude/rules/python.md" in result["init_result"]["linked"]
+
+
+def test_long_lines_of_ordinary_text_do_not_block_adoption(tmp_path):
+    # Unwrapped paragraphs run far past the scan window; only a destination that could
+    # still be open at the window's end is uncertain.
+    project = happy_repo(tmp_path)
+    prose = "Keep functions small and name things clearly. " * 40
+    text = (f"{prose}See [the guide](../../docs/guide.md) when x < y. {prose}\n"
+            f"{prose}Use @pytest.fixture and <https://example.com> too. {prose}\n")
+    write(project, ".cursor/rules/python.mdc", text)
+    write(project, "docs/guide.md", "# Guide\n")
+
+    result = sync_cmd.run(project)
+
+    assert ".cursor/rules/python.mdc" in result["init_result"]["linked"]
+
+
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions as non-root")
+def test_a_rule_that_cannot_be_read_is_treated_as_unclear(tmp_path):
+    project = tmp_path / "repo"
+    write(project, ".cursor/rules/review.mdc", "[guide](guide.md)\n")
+    (project / ".cursor/rules/review.mdc").chmod(0)
+    try:
+        assert adopt.reference_problem(project, ".cursor/rules/review.mdc", ".ctx/cursor-rules/review.mdc") \
+            == "unclear_reference"
+    finally:
+        (project / ".cursor/rules/review.mdc").chmod(0o644)
+
+
+def test_add_refuses_a_rule_whose_local_reference_would_break(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".cursor/rules/review.mdc", "[guide](guide.md)\n")
+    write(project, ".cursor/rules/guide.md", "# Guide\n")
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="breaks_reference"):
+        add_cmd.run(project, ".cursor/rules/review.mdc")
+    assert snapshot(project) == before
+
+
+def test_references_that_cannot_break_do_not_block_adoption(tmp_path):
+    project = happy_repo(tmp_path)
+    text = (
+        "[site](https://example.com/guide.md) [mail](mailto:a@b.c) [top](#rules) [abs](/docs/guide.md)\n"
+        "[missing](nothing-here.md) Use @pytest.fixture and email me at dev@example.com.\n"
+    )
+    write(project, ".cursor/rules/python.mdc", text)
+    write(project, ".claude/rules/style.md", text)
+
+    result = sync_cmd.run(project)
+
+    assert {".cursor/rules/python.mdc", ".claude/rules/style.md"} <= set(result["init_result"]["linked"])
+
+
+def test_every_published_link_is_relative_and_resolves_inside_the_repository(tmp_path):
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/python.mdc", CURSOR_RULE)
+    write(project, ".cursor/rules/frontend/components.mdc", CURSOR_RULE)
+    sync_cmd.run(project)
+
+    links = [n["path"] for n in manifest.load_v2(project)["natives"] if n["mode"] == "link"]
+    assert len(links) == 4
+    root = project.resolve()
+    for rel in links:
+        target = os.readlink(project / rel)
+        assert not os.path.isabs(target)
+        resolved = (project / rel).resolve()
+        assert resolved.is_relative_to(root / ".ctx") and resolved.exists()
+
+
+def test_a_md_file_in_cursor_rules_is_not_treated_as_a_rule(tmp_path):
+    # Cursor ignores .md files in .cursor/rules, so they are not rules SuperCtx manages.
+    project = happy_repo(tmp_path)
+    write(project, ".cursor/rules/notes.md", "Not a Cursor rule.\n")
+
+    result = sync_cmd.run(project)
+
+    assert ".cursor/rules/notes.md" not in result["init_result"]["linked"]
+    assert all(i["path"] != ".cursor/rules/notes.md" for i in result["init_result"]["left_in_place"])
+    assert not os.path.islink(project / ".cursor/rules/notes.md")
+    assert (project / ".cursor/rules/notes.md").read_text(encoding="utf-8") == "Not a Cursor rule.\n"
+
+
+def test_add_adopts_a_new_cursor_rule_in_an_existing_workspace(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".cursor/rules/python.mdc", CURSOR_RULE)
+    assert ".cursor/rules/python.mdc" in sync_cmd.run(project)["candidates"]
+
+    assert add_cmd.run(project, ".cursor/rules/python.mdc").status == "added"
+    assert os.readlink(project / ".cursor/rules/python.mdc") == "../../.ctx/cursor-rules/python.mdc"
+    assert sync_cmd.run(project)["mutated"] is False
 
 
 # --- add --------------------------------------------------------------------
