@@ -28,7 +28,7 @@ REASONS = {
     "name_collision": "another resource would get the same name or canonical path",
     "breaks_reference": "it links to a file next to it that would not resolve from its canonical path in .ctx/",
     "unclear_reference": "it has a link or import whose destination SuperCtx cannot determine, so moving it could break it",
-    "tool_folder": "it holds tool configuration or resources SuperCtx manages one by one",
+    "tool_folder": "it is, holds, or sits inside a folder a tool owns, or holds resources SuperCtx manages one by one",
     "reserved_name": "its canonical path would be a folder SuperCtx already uses in .ctx/",
     "links_unsupported": "directory links cannot be created here, so it stays where it is",
     "canonical_exists": "something already exists at its canonical path in .ctx/",

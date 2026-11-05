@@ -200,7 +200,10 @@ def _overlaps_convention(rel: str, convs: list[dict], own: str | None) -> bool:
         if conv["kind"] in RESOURCE_KINDS:  # resources there are managed one by one
             if rel == path or path.startswith(rel + "/") or rel.startswith(path + "/"):
                 return True
-        elif rel == path or path.startswith(rel + "/"):  # tool folders and instruction files
+        elif conv["kind"] == "folder":  # tool-owned: configuration, hooks, agents, plugins
+            if rel == path or path.startswith(rel + "/") or rel.startswith(path + "/"):
+                return True
+        elif rel == path or path.startswith(rel + "/"):  # instruction files
             return True
     return False
 

@@ -929,7 +929,7 @@ def test_a_planning_folder_is_a_candidate_and_is_adopted_only_when_added(tmp_pat
 
 @pytest.mark.parametrize("folder, canonical", [
     ("docs/architecture", ".ctx/architecture"),          # same depth
-    (".claude/planning-with-files", ".ctx/planning-with-files"),
+    (".notes/journal", ".ctx/journal"),
     ("a/b/c", ".ctx/b/c"),
     ("notes", ".ctx/notes"),                             # top level: one deeper, guard decides
 ])
@@ -948,6 +948,7 @@ def test_a_folder_keeps_its_depth_when_it_can(tmp_path, folder, canonical):
     (".claude", None, "tool_folder"),                         # holds tool configuration
     (".claude/rules", None, "tool_folder"),                   # rules there are managed one by one
     (".claude/rules/sub", None, "tool_folder"),
+    (".claude/planning-with-files", None, "tool_folder"),     # inside a tool-owned folder
     ("docs/skills", None, "reserved_name"),                   # would be .ctx/skills
     ("docs/arch", lambda p: (p / "docs/arch/link").symlink_to("../../src"), "contains_symlink"),
     ("docs/arch", lambda p: write(p, "docs/arch/a.md", "[guide](../guide.md)\n"), "breaks_reference"),
@@ -965,6 +966,42 @@ def test_a_folder_that_cannot_move_safely_is_left_in_place(tmp_path, folder, set
 
     with pytest.raises(add_cmd.AddError, match=reason):
         add_cmd.run(project, folder)
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("folder, files", [
+    (".grok/hooks", {"pre-tool-use.json": '{"hooks": []}\n', "check.sh": "#!/bin/sh\nexit 0\n"}),
+    (".grok/agents", {"reviewer.md": "---\nname: reviewer\n---\nReview.\n"}),
+    (".grok/plugins", {"demo/plugin.json": '{"name": "demo"}\n'}),
+    (".grok", {"config.toml": "[mcp]\n", "hooks/a.json": "{}\n"}),
+    (".claude/agents", {"reviewer.md": "---\nname: reviewer\n---\nReview.\n"}),
+    (".claude/commands", {"ship.md": "Ship it.\n"}),
+    (".cursor/hooks", {"format.sh": "#!/bin/sh\nexit 0\n"}),
+    (".codex", {"config.toml": "model = \"x\"\n"}),
+    (".gemini/commands", {"ship.toml": "prompt = \"x\"\n"}),
+    (".github/agents", {"reviewer.agent.md": "Review.\n"}),
+])
+def test_add_refuses_tool_owned_folders_without_changing_anything(tmp_path, folder, files):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    for name, text in files.items():
+        write(project, f"{folder}/{name}", text)
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="tool_folder"):
+        add_cmd.run(project, folder)
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("given", ["docs/architecture", "docs/architecture/", "./docs/architecture"])
+def test_adding_a_connected_folder_again_reports_it_as_tracked(tmp_path, given):
+    project = reference_folder(tmp_path)
+    assert add_cmd.run(project, "docs/architecture").status == "added"
+    before = snapshot(project)
+
+    result = add_cmd.run(project, given)
+
+    assert (result.status, result.path) == ("already_tracked", "docs/architecture")
     assert snapshot(project) == before
 
 

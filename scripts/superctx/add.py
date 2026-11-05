@@ -47,7 +47,8 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
     resource = next((c for c in registry.detect_resources(project_dir) if c["path"] == native), None)
     if resource is not None:
         return _add_resource(project_dir, resource)
-    if (project_dir / native).is_dir() and not (project_dir / native).is_symlink():
+    # A connected folder is a link by now; _add_resource finds it in the manifest first.
+    if (project_dir / native).is_dir():
         rel = os.path.normpath(native).replace(os.sep, "/")
         if rel in (".", "") or rel.startswith("../") or os.path.isabs(rel):
             raise AddError(f"Folder must be inside the project root and not the root itself: {input_path}")
