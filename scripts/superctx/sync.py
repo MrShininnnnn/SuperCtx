@@ -198,7 +198,20 @@ def _run(project_dir: Path) -> dict:
         unresolved: list[dict] = []
         warnings: list[dict] = []
         # Tool configuration an earlier version turned into a pointer: reported, never written.
-        tool_config = registry.adopted_tool_config(project_dir, [e["path"] for e in manifest.get("files", [])])
+        try:
+            tool_config = registry.adopted_tool_config(project_dir, [e["path"] for e in manifest.get("files", [])])
+        except registry.ScanError as e:
+            return {
+                "mode": "inspect",
+                "state": "managed_needs_repair",
+                "final_state": "needs_attention",
+                "mutated": False,
+                "message": (
+                    f"tool_folder_unreadable: SuperCtx could not read {e}, so it cannot tell which "
+                    "pointers are tool configuration and changed nothing. Make the folder readable "
+                    "and run sync again."
+                ),
+            }
 
         for entry in manifest.get("files", []):
             rel = entry["path"]

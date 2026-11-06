@@ -5,6 +5,7 @@ Identity is by PATH convention (never inferred from file contents). See conventi
 
 from __future__ import annotations
 
+import errno
 import os
 import re
 from dataclasses import dataclass
@@ -200,14 +201,39 @@ def in_tool_folder(rel: str) -> bool:
                for conv in load_conventions())
 
 
+class ScanError(Exception):
+    """A folder a tool reaches could not be read, so tool configuration detection is incomplete."""
+
+
 def adopted_tool_config(project_dir: Path, pointers: list[str]) -> set[str]:
     """Pointer paths that are tool configuration: reachable from a tool-owned folder, through
     links to files or folders, by any path that is not a known instruction file (versions
-    before 0.2.2 adopted these with `add`)."""
+    before 0.2.2 adopted these with `add`). Raises ScanError if a folder cannot be read."""
     project_dir = Path(project_dir).resolve()
     found = {rel for rel in pointers if in_tool_folder(rel)}
     rest = set(pointers) - found
     known = {c["path"] for c in instruction_conventions()}
+
+    def fail(e: OSError):
+        if isinstance(e, FileNotFoundError):  # removed while scanning
+            return
+        where = os.path.relpath(e.filename, project_dir) if e.filename else "a tool folder"
+        raise ScanError(f"{Path(where).as_posix()}: {e.strerror or e}") from e
+
+    def resolve(path: Path) -> Path | None:
+        """The real path inside the project, or None for a link loop or a path outside it."""
+        try:
+            real = path.resolve()
+            real.relative_to(project_dir)
+            return real
+        except (RuntimeError, ValueError):
+            return None
+        except OSError as e:
+            if e.errno == errno.ELOOP:
+                return None
+            fail(e)
+            return None
+
     # Every path a tool reaches a folder by is checked against the exceptions, but each real
     # folder is scanned once. A folder needs at most len(known) + 1 distinct paths: with that
     # many, one of them is not a known instruction file, so link cycles end.
@@ -217,34 +243,35 @@ def adopted_tool_config(project_dir: Path, pointers: list[str]) -> set[str]:
              for c in load_conventions() if c["kind"] == "folder"]
     while queue and rest:
         folder, alias = queue.pop()
+        real = resolve(folder)
+        if real is None or real == project_dir:
+            continue
         try:
-            real = folder.resolve()
+            if not real.is_dir():
+                continue
+            seen = aliases.setdefault(real, set())
+            if alias in seen or len(seen) > len(known):
+                continue
+            seen.add(alias)
+            if real not in links:
+                links[real] = [(path.relative_to(real).as_posix(), path)
+                               for dirpath, dirnames, filenames in os.walk(real, onerror=fail)
+                               for path in (Path(dirpath) / name for name in dirnames + filenames)
+                               if path.is_symlink()]
             real_rel = real.relative_to(project_dir).as_posix()
-        except (OSError, RuntimeError, ValueError):  # a cycle, or outside the project
-            continue
-        seen = aliases.setdefault(real, set())
-        if real == project_dir or not real.is_dir() or alias in seen or len(seen) > len(known):
-            continue
-        seen.add(alias)
-        if real not in links:
-            links[real] = [(path.relative_to(real).as_posix(), path)
-                           for dirpath, dirnames, filenames in os.walk(real)
-                           for path in (Path(dirpath) / name for name in dirnames + filenames)
-                           if path.is_symlink()]
-        for rel in rest:  # pointers in it, present or deleted
-            if rel.startswith(real_rel + "/") and alias + rel[len(real_rel):] not in known:
-                found.add(rel)
-        for sub, path in links[real]:
-            via = f"{alias}/{sub}"
-            if path.is_dir():
-                queue.append((path, via))
-                continue
-            try:
-                target = path.resolve().relative_to(project_dir).as_posix()
-            except (OSError, RuntimeError, ValueError):
-                continue
-            if target in rest and via not in known:
-                found.add(target)
+            for rel in rest:  # pointers in it, present or deleted
+                if rel.startswith(real_rel + "/") and alias + rel[len(real_rel):] not in known:
+                    found.add(rel)
+            for sub, path in links[real]:
+                via = f"{alias}/{sub}"
+                if path.is_dir():
+                    queue.append((path, via))
+                    continue
+                target = resolve(path)
+                if target is not None and target.relative_to(project_dir).as_posix() in rest and via not in known:
+                    found.add(target.relative_to(project_dir).as_posix())
+        except OSError as e:
+            fail(e)
         rest -= found
     return found
 

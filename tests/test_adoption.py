@@ -255,6 +255,8 @@ def test_a_scan_error_while_comparing_with_the_backup_is_not_a_match(tmp_path, m
         return real_scandir(path)
 
     monkeypatch.setattr(os, "scandir", scandir)
+    # Isolate the backup comparison: the tool-folder scan would refuse the whole run first.
+    monkeypatch.setattr(registry, "adopted_tool_config", lambda project_dir, pointers: set())
     result = sync_cmd.run(project)
     monkeypatch.undo()
 
@@ -1287,6 +1289,61 @@ def test_sync_keeps_an_instruction_file_healthy_through_its_own_tool_folder_link
 
     assert sync_cmd.run(project)["mode"] == "healthy"
     assert snapshot(project) == before
+
+
+needs_permissions = pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0,
+                                       reason="root reads unreadable folders")
+
+
+def unreadable(project: Path, rel: str):
+    """Run the body with a folder that can be entered but not listed, then restore it."""
+    class Ctx:
+        def __enter__(self):
+            (project / rel).chmod(0o300)
+        def __exit__(self, *exc):
+            (project / rel).chmod(0o755)
+    return Ctx()
+
+
+def grok_links_to_configs(tmp_path: Path) -> Path:
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "configs/grok.toml", TOOL_CONFIG[".grok/config.toml"])
+    (project / ".grok").mkdir()
+    os.symlink("../configs/grok.toml", project / ".grok/config.toml")
+    return project
+
+
+@needs_permissions
+def test_add_refuses_when_a_tool_folder_cannot_be_read(tmp_path):
+    project = grok_links_to_configs(tmp_path)
+    before = snapshot(project)
+
+    with unreadable(project, ".grok"):
+        with pytest.raises(add_cmd.AddError, match="tool_folder_unreadable.*\\.grok"):
+            add_cmd.run(project, "configs/grok.toml")
+    assert snapshot(project) == before
+
+
+@needs_permissions
+def test_sync_changes_nothing_when_a_tool_folder_cannot_be_read(tmp_path, monkeypatch, capsys):
+    from superctx.__main__ import main
+    project = grok_links_to_configs(tmp_path)
+    adopted_by_an_earlier_version(project, "configs/grok.toml", monkeypatch)
+    os.unlink(project / "configs/grok.toml")
+    os.unlink(project / "CLAUDE.md")  # an ordinary pointer is not recreated either
+    before = snapshot(project)
+    capsys.readouterr()
+
+    with unreadable(project, ".grok"):
+        result = sync_cmd.run(project)
+        code = main(["sync", str(project)])
+    out = capsys.readouterr().out
+
+    assert result["final_state"] == "needs_attention" and result["mutated"] is False
+    assert code == 1 and "tool_folder_unreadable" in out and ".grok" in out
+    assert snapshot(project) == before  # the missing pointer is not recreated
+    assert sync_cmd.run(project)["unresolved"] == [{"path": "configs/grok.toml", "reason": "tool_config_adopted"}]
 
 
 def test_guard_lets_adopted_tool_config_be_restored(tmp_path, monkeypatch):

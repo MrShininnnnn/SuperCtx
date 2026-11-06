@@ -79,8 +79,12 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
     # Tool configuration, hooks, and plugins must never become pointers: check the path as
     # given (normalized, links not followed), the file it resolves to, and links to it from tool folders.
     given_rel = Path(os.path.relpath(os.path.abspath(project_dir / file_path), project_dir)).as_posix()
-    if (registry.in_tool_folder(given_rel) or registry.in_tool_folder(rel_path_str)
-            or registry.adopted_tool_config(project_dir, [rel_path_str])):
+    try:
+        adopted = registry.adopted_tool_config(project_dir, [rel_path_str])
+    except registry.ScanError as e:
+        raise AddError(f"Cannot add {given_rel}: tool_folder_unreadable ({e}); SuperCtx cannot tell "
+                       "whether a tool reads this file, so it changed nothing")
+    if registry.in_tool_folder(given_rel) or registry.in_tool_folder(rel_path_str) or adopted:
         raise AddError(f"Cannot add {given_rel}: tool_folder")
 
     # 3. Detect duplicate/tracked state
