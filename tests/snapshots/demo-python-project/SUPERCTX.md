@@ -14,14 +14,14 @@ Generated tool files point here.
 Write repo-wide instructions here. This section is not tied to any one assistant.
 It is preserved by `/superctx:sync`.
 
-## From: CLAUDE.md  (Claude Code)
+## From: CLAUDE.md  (Claude Code, Grok Build)
 
 # Claude Project Instructions
 
 Use the SuperCtx demo project as a small Python package.
 Prefer deterministic behavior and keep examples minimal.
 
-## From: AGENTS.md  (OpenAI Codex, Cursor, GitHub Copilot, Windsurf, Aider, Zed, Jules, Devin, Gemini CLI (opt-in))
+## From: AGENTS.md  (OpenAI Codex, Cursor, GitHub Copilot, Windsurf, Aider, Zed, Jules, Devin, Gemini CLI (opt-in), Grok Build)
 
 # Agent Project Instructions
 

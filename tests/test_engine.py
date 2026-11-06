@@ -40,7 +40,7 @@ def test_init_detects_and_scaffolds(tmp_path):
     assert {f["path"] for f in manifest["files"]} == {"CLAUDE.md", "AGENTS.md"}
     # tools metadata is carried over from the registry
     claude = next(f for f in manifest["files"] if f["path"] == "CLAUDE.md")
-    assert claude["tools"] == ["Claude Code"]
+    assert claude["tools"] == ["Claude Code", "Grok Build"]
 
     # Verify shims exist and are valid shims
     from superctx.shim import is_shim_file
