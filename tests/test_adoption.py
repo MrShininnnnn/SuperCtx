@@ -1021,6 +1021,33 @@ def test_add_refuses_files_inside_tool_folders_without_changing_anything(tmp_pat
     assert snapshot(project) == before  # contents, modes, links, and mtimes everywhere
 
 
+@pytest.mark.parametrize("given", [".grok/config.toml", "./.grok/config.toml", "src/../.grok/config.toml"])
+def test_add_refuses_a_tool_file_that_links_outside_its_folder(tmp_path, given):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "configs/grok.toml", TOOL_CONFIG[".grok/config.toml"])
+    (project / ".grok").mkdir()
+    os.symlink("../configs/grok.toml", project / ".grok/config.toml")
+    (project / "src").mkdir()
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="tool_folder"):
+        add_cmd.run(project, given)
+    assert snapshot(project) == before
+
+
+def test_add_refuses_a_link_that_resolves_into_a_tool_folder(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".claude/settings.json", TOOL_CONFIG[".claude/settings.json"])
+    os.symlink(".claude/settings.json", project / "notes.md")
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="tool_folder"):
+        add_cmd.run(project, "notes.md")
+    assert snapshot(project) == before
+
+
 @pytest.mark.parametrize("rel", [".claude/CLAUDE.md", ".github/copilot-instructions.md", ".codex/AGENTS.md"])
 def test_add_still_connects_instruction_files_inside_tool_folders(tmp_path, rel):
     project = happy_repo(tmp_path)
