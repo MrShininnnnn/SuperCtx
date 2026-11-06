@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `add` no longer replaces a file inside a tool's own folder with a pointer. Files such as `.grok/config.toml`, `.claude/settings.json`, `.agents/hooks.json`, or `.github/workflows/ci.yml` were backed up, imported into the hub, and overwritten, which broke that tool's configuration. They are now refused with `tool_folder` and nothing changes; this includes unrecognized notes such as `.claude/notes.md`. Registered instruction files (`.claude/CLAUDE.md`, `.github/copilot-instructions.md`, `.codex/AGENTS.md`) and supported rules and skills are added as before.
 - Sync no longer suggests the `.agents/skills` folder itself as an untracked candidate. The suggestion came from an older Antigravity list, and adding that folder is refused because `.agents/` is a tool's own folder; the skills inside it are still suggested and connected one by one.
 
 ## [0.2.1] - 2026-11-06
