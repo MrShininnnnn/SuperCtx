@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Sync no longer suggests the `.agents/skills` folder itself as an untracked candidate. The suggestion came from an older Antigravity list, and adding that folder is refused because `.agents/` is a tool's own folder; the skills inside it are still suggested and connected one by one.
+- Sync no longer suggests `.agents/hooks.json` or the `.agents/hooks` folder. Hooks are outside SuperCtx's scope and `add` refuses both, so the suggestions could not be acted on; the files are left untouched.
 
 ## [0.2.1] - 2026-11-06
 

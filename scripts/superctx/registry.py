@@ -39,16 +39,6 @@ LEGACY_OR_UNCERTAIN_CANDIDATES = [
         label="Legacy Antigravity workspace rules",
         note="folder sync not enabled yet",
     ),
-    DiscoveryCandidate(
-        path=".agents/hooks.json",
-        label="Antigravity hooks configuration",
-        note="not confirmed official support",
-    ),
-    DiscoveryCandidate(
-        path=".agents/hooks",
-        label="Antigravity hooks",
-        note="folder sync not enabled yet",
-    ),
 ]
 
 
@@ -107,8 +97,7 @@ def detect_all(project_dir: Path) -> dict[str, list[dict]]:
     # 3. Legacy or uncertain folder candidates
     for cand in LEGACY_OR_UNCERTAIN_CANDIDATES:
         p = project_dir / cand.path
-        is_match = p.is_file() if cand.path.endswith(".json") else p.is_dir()
-        if is_match:
+        if p.is_dir():
             res["legacy_or_uncertain_folder_candidate"].append({
                 "path": cand.path,
                 "label": cand.label,

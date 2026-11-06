@@ -772,6 +772,22 @@ def test_codex_skills_are_linked_into_the_shared_skills_folder(tmp_path):
     assert again["mutated"] is False and ".agents/skills" not in again["candidates"]
 
 
+def test_agents_hooks_are_never_suggested_or_touched(tmp_path):
+    project = happy_repo(tmp_path)
+    hooks = {".agents/hooks.json": "{}\n", ".agents/hooks/check.sh": "#!/bin/sh\nexit 0\n"}
+    for rel, text in hooks.items():
+        write(project, rel, text)
+    before = snapshot(project / ".agents")
+
+    result = sync_cmd.run(project)
+    again = sync_cmd.run(project)
+
+    for rel in (".agents/hooks.json", ".agents/hooks"):
+        assert rel not in result["init_result"]["untracked"] and rel not in again["candidates"]
+        assert not os.path.lexists(core.sources_dir(project) / rel)
+    assert snapshot(project / ".agents") == before
+
+
 def test_grok_configuration_is_never_adopted(tmp_path):
     from test_v2_migration_safety import GROK_FILES
     project = happy_repo(tmp_path)
