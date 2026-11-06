@@ -207,13 +207,14 @@ verified          = "2026-11-04"
 verified_behavior = "Offered as a candidate and connected only with /superctx:add: the whole folder moves to its canonical path with a relative directory symlink left behind, and reads and writes through the original path reach the canonical files (tests/test_real_agents.py)."
 
 [[convention]]
-path      = ".agents/skills/"
-kind      = "skills"
-canonical = ".ctx/skills/"
-tools     = ["OpenAI Codex", "Cursor"]
-source    = "https://developers.openai.com/codex/skills"
-verified  = "2026-11-04"
-note      = "Discovered and left in place: Codex's skill behavior through links has not been verified (the Codex CLI was not runnable in the verification environment)."
+path              = ".agents/skills/"
+kind              = "skills"
+canonical         = ".ctx/skills/"
+publish           = "link"
+tools             = ["OpenAI Codex"]
+source            = "https://learn.chatgpt.com/docs/build-skills"
+verified          = "2026-11-05"
+verified_behavior = "Codex CLI 0.167.0, macOS: a skill published as a relative directory symlink is listed, runs its bundled script, and reads its bundled reference; skills in .claude/skills/ and outside .agents/skills/ are not listed (tests/test_real_agents.py). The docs state that Codex follows symlinked skill folders."
 
 [[convention]]
 path              = ".cursor/rules/"
