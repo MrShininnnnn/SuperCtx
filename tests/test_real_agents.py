@@ -130,9 +130,10 @@ def shared_repo(tmp_path_factory) -> Path:
         files[f"{folder}/{name}/SKILL.md"] = SHARED_SKILL_MD.format(name=name)
         files[f"{folder}/{name}/scripts/run.sh"] = f"#!/bin/sh\necho SCRIPT-{token}\n"
         files[f"{folder}/{name}/references/guide.md"] = f"# Guide\n\nThe reference codeword is REF-{token}.\n"
-    # Codex can run commands, so its script computes its token: it appears only in the
-    # script's output, and quoting the script instead of running it cannot pass.
+    # Codex and Grok can run commands, so their scripts compute their tokens: each appears
+    # only in the script's output, and quoting the script instead of running it cannot pass.
     files[".agents/skills/sctx-ship/scripts/run.sh"] = "#!/bin/sh\necho SCRIPT-$((3000 + 141))\n"
+    files[".grok/skills/sctx-deploy/scripts/run.sh"] = "#!/bin/sh\necho SCRIPT-$((2000 + 207))\n"
     set_up(root, files, executable=tuple(f"{f}/{n}/scripts/run.sh" for f, (n, _) in SKILLS.items()))
     for folder in (".claude/skills", ".cursor/skills", ".grok/skills", ".agents/skills"):
         name = SKILLS[folder][0]
@@ -325,6 +326,8 @@ def test_grok_runs_a_linked_skill_with_its_bundled_files(shared_repo, folder):
     discovered = {s["name"]: s["source"].get("path", "") for s in grok_inspect(shared_repo)["skills"]
                   if s["source"].get("type") == "project"}
     assert discovered.get(name, "").endswith(f"{folder}/{name}/SKILL.md"), discovered
+    if folder == ".grok/skills":
+        assert token not in (shared_repo / folder / name / "scripts/run.sh").read_text(encoding="utf-8")
     answer = ask_grok(shared_repo, f"/{name}", "Bash(bash *scripts/run.sh)", f"Read({shared_repo}/**)")
     assert f"SCRIPT-{token}" in answer and f"REF-{token}" in answer, answer
 
