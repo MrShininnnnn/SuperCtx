@@ -1231,6 +1231,64 @@ def test_sync_keeps_an_instruction_file_healthy_when_its_tool_folder_is_a_link(t
     assert snapshot(project) == before
 
 
+def shared_tool_folders(tmp_path, monkeypatch, folder: str, name: str, reverse: bool) -> Path:
+    """A recognized instruction file also exposed through a second tool folder's alias."""
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, f"shared/{name}", "Prefer small diffs.\n")
+    os.symlink("shared", project / folder)
+    os.symlink("shared", project / ".grok")
+    if reverse:  # the same repository, scanned in the other order
+        convs = registry.load_conventions()
+        monkeypatch.setattr(registry, "load_conventions", lambda path=None: list(reversed(convs)))
+    return project
+
+
+ALIASED = [(".codex", "AGENTS.md"), (".github", "copilot-instructions.md")]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("folder, name", ALIASED)
+def test_add_refuses_an_instruction_file_another_tool_folder_also_exposes(tmp_path, monkeypatch, folder, name, reverse):
+    project = shared_tool_folders(tmp_path, monkeypatch, folder, name, reverse)
+    before = snapshot(project)
+
+    for given in (f"shared/{name}", f"{folder}/{name}"):
+        with pytest.raises(add_cmd.AddError, match="tool_folder"):
+            add_cmd.run(project, given)
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("folder, name", ALIASED)
+def test_sync_reports_an_instruction_file_another_tool_folder_also_exposes(tmp_path, monkeypatch, folder, name, reverse):
+    project = shared_tool_folders(tmp_path, monkeypatch, folder, name, reverse)
+    adopted_by_an_earlier_version(project, f"shared/{name}", monkeypatch)
+    os.unlink(project / f"shared/{name}")
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": f"shared/{name}", "reason": "tool_config_adopted"} in result["unresolved"]
+    assert snapshot(project) == before  # the deleted pointer stays deleted
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_sync_keeps_an_instruction_file_healthy_through_its_own_tool_folder_link(tmp_path, monkeypatch, reverse):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "shared/AGENTS.md", "Prefer small diffs.\n")
+    os.symlink("shared", project / ".codex")
+    if reverse:
+        convs = registry.load_conventions()
+        monkeypatch.setattr(registry, "load_conventions", lambda path=None: list(reversed(convs)))
+    assert add_cmd.run(project, ".codex/AGENTS.md").status == "added"
+    before = snapshot(project)
+
+    assert sync_cmd.run(project)["mode"] == "healthy"
+    assert snapshot(project) == before
+
+
 def test_guard_lets_adopted_tool_config_be_restored(tmp_path, monkeypatch):
     from superctx.guard import handle_pre_tool_use
     project = happy_repo(tmp_path)

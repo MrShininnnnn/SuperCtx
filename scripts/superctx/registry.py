@@ -201,44 +201,50 @@ def in_tool_folder(rel: str) -> bool:
 
 
 def adopted_tool_config(project_dir: Path, pointers: list[str]) -> set[str]:
-    """Pointer paths that are tool configuration: inside a tool-owned folder, or reached from one
-    through links to files or folders (versions before 0.2.2 adopted all of these with `add`)."""
+    """Pointer paths that are tool configuration: reachable from a tool-owned folder, through
+    links to files or folders, by any path that is not a known instruction file (versions
+    before 0.2.2 adopted these with `add`)."""
     project_dir = Path(project_dir).resolve()
     found = {rel for rel in pointers if in_tool_folder(rel)}
     rest = set(pointers) - found
-    # Each folder a tool reaches, with the path it reaches it by. A linked folder is queued by
-    # its real location and visited once, so link cycles end; links leaving the project are skipped.
+    known = {c["path"] for c in instruction_conventions()}
+    # Every path a tool reaches a folder by is checked against the exceptions, but each real
+    # folder is scanned once. A folder needs at most len(known) + 1 distinct paths: with that
+    # many, one of them is not a known instruction file, so link cycles end.
+    aliases: dict[Path, set[str]] = {}
+    links: dict[Path, list[tuple[str, Path]]] = {}
     queue = [(project_dir / c["path"].rstrip("/"), c["path"].rstrip("/"))
              for c in load_conventions() if c["kind"] == "folder"]
-    seen: set[Path] = set()
     while queue and rest:
         folder, alias = queue.pop()
         try:
             real = folder.resolve()
             real_rel = real.relative_to(project_dir).as_posix()
-        except (OSError, RuntimeError, ValueError):
+        except (OSError, RuntimeError, ValueError):  # a cycle, or outside the project
             continue
-        if real == project_dir or real in seen or not real.is_dir():
+        seen = aliases.setdefault(real, set())
+        if real == project_dir or not real.is_dir() or alias in seen or len(seen) > len(known):
             continue
-        seen.add(real)
+        seen.add(alias)
+        if real not in links:
+            links[real] = [(path.relative_to(real).as_posix(), path)
+                           for dirpath, dirnames, filenames in os.walk(real)
+                           for path in (Path(dirpath) / name for name in dirnames + filenames)
+                           if path.is_symlink()]
         for rel in rest:  # pointers in it, present or deleted
-            if rel.startswith(real_rel + "/") and not lookup_known_convention(alias + rel[len(real_rel):]):
+            if rel.startswith(real_rel + "/") and alias + rel[len(real_rel):] not in known:
                 found.add(rel)
-        for dirpath, dirnames, filenames in os.walk(real):
-            for name in dirnames + filenames:
-                path = Path(dirpath) / name
-                if not path.is_symlink():
-                    continue
-                via = f"{alias}/{path.relative_to(real).as_posix()}"
-                if path.is_dir():
-                    queue.append((path, via))
-                    continue
-                try:
-                    target = path.resolve().relative_to(project_dir).as_posix()
-                except (OSError, RuntimeError, ValueError):
-                    continue
-                if target in rest and not lookup_known_convention(via):
-                    found.add(target)
+        for sub, path in links[real]:
+            via = f"{alias}/{sub}"
+            if path.is_dir():
+                queue.append((path, via))
+                continue
+            try:
+                target = path.resolve().relative_to(project_dir).as_posix()
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if target in rest and via not in known:
+                found.add(target)
         rest -= found
     return found
 
