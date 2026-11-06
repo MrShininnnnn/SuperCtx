@@ -107,7 +107,7 @@ Sync migrates a v1 workspace before doing anything else. The write order is:
 3. write `.ctx/superctx.toml`
 4. replace the sentinel with `migration = "complete"`
 
-Each step is an atomic replace from a temporary file created exclusively in `.ctx/`, so nothing already at a temporary path (such as a symlink) is followed. Before step 2 the workspace is still a plain v1 workspace. From step 2 on, every 0.1.x client refuses it.
+Each step is an atomic replace from a temporary file created exclusively in `.ctx/`, so nothing already at a temporary path (such as a symlink) is followed. Before step 2 the workspace is still a plain v1 workspace. From step 2 on, the v0.1.4 commands refuse it (the release gate; other 0.1.x versions are not tested).
 
 `locate()` classifies the workspace from these files:
 

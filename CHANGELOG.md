@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-05
+
+### Added
+- One-step setup also adopts Claude Code rules (`.claude/rules/`) and skills (`.claude/skills/`), Cursor rules (`.cursor/rules/`) and skills (`.cursor/skills/`), and Grok Build skills (`.grok/skills/`). Each is backed up, moved into `.ctx/`, and replaced by a relative symlink, so the tool keeps loading it from its original path.
+- `/superctx:add <path>` connects a rule, a skill, or a whole reference or planning folder (for example `docs/architecture` or `.planning`) the same way.
+- Skills from every supported tool share `.ctx/skills/`. Same-name skills from two tools are both left in place and reported.
+- Anything that cannot move without changing behavior stays in place, and sync reports why (for example `breaks_reference`, `unclear_reference`, `name_collision`, `tool_folder`, `links_unsupported`).
+- Tested compatibility matrix with Claude Code, Cursor, and Grok Build versions (`architecture/compatibility.md`). Real-tool checks are in `tests/test_real_agents.py` (opt-in).
+
+### Changed
+- The manifest moves to `.ctx/superctx.toml` (schema 2). On first sync, `.ctx/manifest.toml` is copied to `.ctx/manifest.v1.toml` and replaced by a compatibility marker: while it is present, the SuperCtx 0.1.4 commands (`sync`, `add`) refuse the repository and write nothing (tested; other 0.1.x versions are not). With the marker deleted, 0.1.4's internal setup function, which its commands do not reach, would set up again over the hub; this known hazard is kept as an expected test failure. Interrupted upgrades resume, and a lost v2 manifest is reported instead of rebuilt. See "Upgrading from 0.1" in the README.
+- Sync leaves edited pointers, replaced or retargeted links, and missing canonical copies in place, reports them as conflicts, and exits with status 1.
+
+### Not included
+- Commands, subagents, hooks, MCP configuration, local settings, plugins, and other tool configuration are never adopted. No folder inside a tool's own folder can be connected.
+- OpenAI Codex skills (`.agents/skills/`) are discovered but not adopted until verified.
+
 ## [0.1.4] - 2026-06-22
 
 ### Changed
