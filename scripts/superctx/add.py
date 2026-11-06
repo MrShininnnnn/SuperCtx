@@ -76,6 +76,11 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
 
     if rel_path.parts and rel_path.parts[0] == core.CTX_DIRNAME:
         raise AddError("Cannot add files inside the .ctx directory.")
+    # Tool configuration, hooks, and plugins must never become pointers: check the path as
+    # given (normalized, links not followed) and the file it resolves to.
+    given_rel = Path(os.path.relpath(os.path.abspath(project_dir / file_path), project_dir)).as_posix()
+    if registry.in_tool_folder(given_rel) or registry.in_tool_folder(rel_path_str):
+        raise AddError(f"Cannot add {given_rel}: tool_folder")
 
     # 3. Detect duplicate/tracked state
     try:

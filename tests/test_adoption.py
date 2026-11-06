@@ -996,6 +996,88 @@ def test_add_refuses_tool_owned_folders_without_changing_anything(tmp_path, fold
     assert snapshot(project) == before
 
 
+TOOL_CONFIG = {
+    ".agents/hooks.json": "{}\n",
+    ".grok/config.toml": "[permissions]\nallow = []\n",
+    ".claude/settings.json": "{}\n",
+    ".cursor/hooks.json": "{}\n",
+    ".github/workflows/ci.yml": "on: push\n",
+    ".codex/config.toml": 'model = "gpt-6-luna"\n',
+    ".gemini/settings.json": "{}\n",
+    ".claude/notes.md": "# Notes\n\nKeep this local.\n",
+}
+
+
+@pytest.mark.parametrize("rel", sorted(TOOL_CONFIG))
+def test_add_refuses_files_inside_tool_folders_without_changing_anything(tmp_path, rel):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    for path, text in TOOL_CONFIG.items():
+        write(project, path, text)
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="tool_folder"):
+        add_cmd.run(project, rel)
+    assert snapshot(project) == before  # contents, modes, links, and mtimes everywhere
+
+
+@pytest.mark.parametrize("given", [".grok/config.toml", "./.grok/config.toml", "src/../.grok/config.toml"])
+def test_add_refuses_a_tool_file_that_links_outside_its_folder(tmp_path, given):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "configs/grok.toml", TOOL_CONFIG[".grok/config.toml"])
+    (project / ".grok").mkdir()
+    os.symlink("../configs/grok.toml", project / ".grok/config.toml")
+    (project / "src").mkdir()
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="tool_folder"):
+        add_cmd.run(project, given)
+    assert snapshot(project) == before
+
+
+def test_add_refuses_a_link_that_resolves_into_a_tool_folder(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".claude/settings.json", TOOL_CONFIG[".claude/settings.json"])
+    os.symlink(".claude/settings.json", project / "notes.md")
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="tool_folder"):
+        add_cmd.run(project, "notes.md")
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("rel", [".claude/CLAUDE.md", ".github/copilot-instructions.md", ".codex/AGENTS.md"])
+def test_add_still_connects_instruction_files_inside_tool_folders(tmp_path, rel):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, rel, "Prefer small diffs.\n")
+
+    assert add_cmd.run(project, rel).status == "added"
+    assert shim.is_shim_file(project / rel)
+    assert "Prefer small diffs." in (project / ".ctx/SUPERCTX.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("rel, canonical", [
+    (".claude/rules/testing.md", "../../.ctx/rules/testing.md"),
+    (".cursor/rules/style.mdc", "../../.ctx/cursor-rules/style.mdc"),
+    (".claude/skills/ship", "../../.ctx/skills/ship"),
+    (".agents/skills/ship", "../../.ctx/skills/ship"),
+    (".grok/skills/ship", "../../.ctx/skills/ship"),
+])
+def test_add_still_links_rules_and_skills_inside_tool_folders(tmp_path, rel, canonical):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    if "/skills/" in rel:
+        write_skill(project, rel.rsplit("/", 1)[0], "ship", "token")
+    else:
+        write(project, rel, "---\nglobs: src/**/*.py\nalwaysApply: false\n---\n\nUse snake_case.\n")
+
+    assert add_cmd.run(project, rel).status == "added"
+    assert os.readlink(project / rel) == canonical
+
+
 @pytest.mark.parametrize("given", ["docs/architecture", "docs/architecture/", "./docs/architecture"])
 def test_adding_a_connected_folder_again_reports_it_as_tracked(tmp_path, given):
     project = reference_folder(tmp_path)

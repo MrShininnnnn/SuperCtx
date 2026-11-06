@@ -203,6 +203,14 @@ def _overlaps_convention(rel: str, convs: list[dict], own: str | None) -> bool:
     return False
 
 
+def in_tool_folder(rel: str) -> bool:
+    """True if a single file sits inside a tool-owned folder and is not a known instruction file."""
+    if lookup_known_convention(rel):
+        return False
+    return any(conv["kind"] == "folder" and rel.startswith(conv["path"].rstrip("/") + "/")
+               for conv in load_conventions())
+
+
 def folder_candidate(project_dir: Path, rel: str, type_: str, tools: list[str] | None = None,
                      convention: str | None = None) -> dict:
     """A whole folder as one resource (reference, or planning under a planning convention)."""
