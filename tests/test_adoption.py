@@ -1099,6 +1099,7 @@ def adopted_by_an_earlier_version(project: Path, rel: str, monkeypatch) -> None:
     """What `add` did before 0.2.2: tool configuration became a pointer."""
     with monkeypatch.context() as m:
         m.setattr(registry, "in_tool_folder", lambda rel: False)
+        m.setattr(registry, "adopted_tool_config", lambda project_dir, pointers: set())
         assert add_cmd.run(project, rel).status == "added"
 
 
@@ -1146,6 +1147,60 @@ def test_sync_reports_tool_config_adopted_through_a_link(tmp_path, monkeypatch):
     assert snapshot(project) == before
 
 
+def test_sync_reports_tool_config_adopted_through_a_folder_link(tmp_path, monkeypatch):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "configs/grok.toml", TOOL_CONFIG[".grok/config.toml"])
+    (project / ".grok").mkdir()
+    os.symlink("../configs", project / ".grok/configs")
+    adopted_by_an_earlier_version(project, ".grok/configs/grok.toml", monkeypatch)
+    os.unlink(project / "configs/grok.toml")
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": "configs/grok.toml", "reason": "tool_config_adopted"} in result["unresolved"]
+    assert snapshot(project) == before  # the deleted pointer stays deleted
+
+
+def test_tool_config_detection_follows_folder_links_safely(tmp_path, monkeypatch):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    write(project, "more/codex.toml", TOOL_CONFIG[".codex/config.toml"])
+    (project / ".codex").mkdir()
+    (project / "configs").mkdir()
+    os.symlink("../configs", project / ".codex/configs")    # a chain of folder links
+    os.symlink("../more", project / "configs/deep")
+    os.symlink(".", project / ".codex/self")                # cycles
+    os.symlink("../.codex", project / "configs/back")
+    os.symlink(str(outside), project / ".codex/outside")    # outside the repository
+    os.symlink("missing", project / ".codex/broken")
+    adopted_by_an_earlier_version(project, ".codex/configs/deep/codex.toml", monkeypatch)
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": "more/codex.toml", "reason": "tool_config_adopted"} in result["unresolved"]
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("link, target", [(".grok/config.toml", "../configs/grok.toml"),
+                                          (".grok/configs", "../configs")])
+def test_add_refuses_a_file_a_tool_folder_links_to(tmp_path, link, target):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "configs/grok.toml", TOOL_CONFIG[".grok/config.toml"])
+    (project / ".grok").mkdir()
+    os.symlink(target, project / link)
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="tool_folder"):
+        add_cmd.run(project, "configs/grok.toml")
+    assert snapshot(project) == before
+
+
 def test_sync_keeps_supported_files_inside_tool_folders_healthy(tmp_path):
     project = happy_repo(tmp_path)
     sync_cmd.run(project)
@@ -1161,6 +1216,18 @@ def test_sync_keeps_supported_files_inside_tool_folders_healthy(tmp_path):
     result = sync_cmd.run(project)
 
     assert result["mode"] == "healthy", result
+    assert snapshot(project) == before
+
+
+def test_sync_keeps_an_instruction_file_healthy_when_its_tool_folder_is_a_link(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "shared/github/copilot-instructions.md", "Prefer small diffs.\n")
+    os.symlink("shared/github", project / ".github")
+    assert add_cmd.run(project, ".github/copilot-instructions.md").status == "added"
+    before = snapshot(project)
+
+    assert sync_cmd.run(project)["mode"] == "healthy"
     assert snapshot(project) == before
 
 

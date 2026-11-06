@@ -201,25 +201,45 @@ def in_tool_folder(rel: str) -> bool:
 
 
 def adopted_tool_config(project_dir: Path, pointers: list[str]) -> set[str]:
-    """Pointer paths that are tool configuration: inside a tool-owned folder, or the target of
-    a link there (versions before 0.2.2 adopted both with `add`)."""
+    """Pointer paths that are tool configuration: inside a tool-owned folder, or reached from one
+    through links to files or folders (versions before 0.2.2 adopted all of these with `add`)."""
     project_dir = Path(project_dir).resolve()
     found = {rel for rel in pointers if in_tool_folder(rel)}
     rest = set(pointers) - found
-    for conv in load_conventions():
-        if conv["kind"] != "folder" or not rest:
+    # Each folder a tool reaches, with the path it reaches it by. A linked folder is queued by
+    # its real location and visited once, so link cycles end; links leaving the project are skipped.
+    queue = [(project_dir / c["path"].rstrip("/"), c["path"].rstrip("/"))
+             for c in load_conventions() if c["kind"] == "folder"]
+    seen: set[Path] = set()
+    while queue and rest:
+        folder, alias = queue.pop()
+        try:
+            real = folder.resolve()
+            real_rel = real.relative_to(project_dir).as_posix()
+        except (OSError, RuntimeError, ValueError):
             continue
-        for dirpath, dirnames, filenames in os.walk(project_dir / conv["path"]):
-            for name in filenames:
+        if real == project_dir or real in seen or not real.is_dir():
+            continue
+        seen.add(real)
+        for rel in rest:  # pointers in it, present or deleted
+            if rel.startswith(real_rel + "/") and not lookup_known_convention(alias + rel[len(real_rel):]):
+                found.add(rel)
+        for dirpath, dirnames, filenames in os.walk(real):
+            for name in dirnames + filenames:
                 path = Path(dirpath) / name
-                if not path.is_symlink() or lookup_known_convention(path.relative_to(project_dir).as_posix()):
+                if not path.is_symlink():
+                    continue
+                via = f"{alias}/{path.relative_to(real).as_posix()}"
+                if path.is_dir():
+                    queue.append((path, via))
                     continue
                 try:
                     target = path.resolve().relative_to(project_dir).as_posix()
-                except ValueError:
+                except (OSError, RuntimeError, ValueError):
                     continue
-                if target in rest:
+                if target in rest and not lookup_known_convention(via):
                     found.add(target)
+        rest -= found
     return found
 
 
