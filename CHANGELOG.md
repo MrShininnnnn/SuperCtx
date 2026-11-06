@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-06
+
 ### Fixed
-- `add` no longer replaces a file inside a tool's own folder with a pointer. Files such as `.grok/config.toml`, `.claude/settings.json`, `.agents/hooks.json`, or `.github/workflows/ci.yml` were backed up, imported into the hub, and overwritten, which broke that tool's configuration. They are now refused with `tool_folder` and nothing changes, whether the path given or the file a link resolves to is inside the tool folder; this includes unrecognized notes such as `.claude/notes.md`. Registered instruction files (`.claude/CLAUDE.md`, `.github/copilot-instructions.md`, `.codex/AGENTS.md`) and supported rules and skills are added as before.
-- Sync no longer suggests the `.agents/skills` folder itself as an untracked candidate. The suggestion came from an older Antigravity list, and adding that folder is refused because `.agents/` is a tool's own folder; the skills inside it are still suggested and connected one by one.
-- Sync no longer suggests `.agents/hooks.json` or the `.agents/hooks` folder. Hooks are outside SuperCtx's scope and `add` refuses both, so the suggestions could not be acted on; the files are left untouched.
+- `add` no longer replaces a file inside a tool's own folder with a pointer. Files such as `.grok/config.toml`, `.claude/settings.json`, `.agents/hooks.json`, or `.github/workflows/ci.yml` were backed up, imported into the hub, and overwritten, which broke that tool's configuration. They are now refused with `tool_folder` and nothing changes, whether the path given or the file a link resolves to is inside the tool folder; this includes unrecognized notes such as `.claude/notes.md`. Registered instruction files (`.claude/CLAUDE.md`, `.github/copilot-instructions.md`, `.codex/AGENTS.md`) and supported rules and skills are added as before. (#95)
+  Upgrading does not repair a file an earlier version already replaced: sync still reports it as healthy. To recover one, copy the original back from `.ctx/sources/<same path>`, delete that path's `[[natives]]` entry from `.ctx/superctx.toml`, and delete its `## From: <path>` section from `.ctx/SUPERCTX.md`. Sync then reports the repository as healthy and leaves the file alone. Restoring the file without removing the entry stops sync from overwriting it, but every sync reports it as `native_edited`.
+- Sync no longer suggests the `.agents/skills` folder itself as an untracked candidate. The suggestion came from an older Antigravity list, and adding that folder is refused because `.agents/` is a tool's own folder; the skills inside it are still suggested and connected one by one. (#93)
+- Sync no longer suggests `.agents/hooks.json` or the `.agents/hooks` folder. Hooks are outside SuperCtx's scope and `add` refuses both, so the suggestions could not be acted on; the files are left untouched. (#94)
 
 ## [0.2.1] - 2026-11-06
 
