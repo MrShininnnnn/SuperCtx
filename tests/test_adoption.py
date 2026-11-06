@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -1092,6 +1093,105 @@ def test_add_still_links_rules_and_skills_inside_tool_folders(tmp_path, rel, can
 
     assert add_cmd.run(project, rel).status == "added"
     assert os.readlink(project / rel) == canonical
+
+
+def adopted_by_an_earlier_version(project: Path, rel: str, monkeypatch) -> None:
+    """What `add` did before 0.2.2: tool configuration became a pointer."""
+    with monkeypatch.context() as m:
+        m.setattr(registry, "in_tool_folder", lambda rel: False)
+        assert add_cmd.run(project, rel).status == "added"
+
+
+@pytest.mark.parametrize("rel", sorted(TOOL_CONFIG))
+def test_sync_reports_tool_config_an_earlier_version_adopted_without_touching_it(tmp_path, rel, monkeypatch):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, rel, TOOL_CONFIG[rel])
+    adopted_by_an_earlier_version(project, rel, monkeypatch)
+
+    # Flagged whether the pointer is still there, was deleted, or the original was restored.
+    for step in ("pointer", "deleted", "restored"):
+        if step == "deleted":
+            os.unlink(project / rel)
+        elif step == "restored":
+            shutil.copy2(core.sources_dir(project) / rel, project / rel)
+        before = snapshot(project)
+        result = sync_cmd.run(project)
+        assert result["final_state"] == "needs_attention", step
+        assert {"path": rel, "reason": "tool_config_adopted"} in result["unresolved"], step
+        assert snapshot(project) == before, step
+
+    assert (project / rel).read_text(encoding="utf-8") == TOOL_CONFIG[rel]
+    # The rest of the recovery: forget the native, and sync is healthy without touching it.
+    doc = manifest.load_v2(project)
+    doc["natives"] = [n for n in doc["natives"] if n["path"] != rel]
+    manifest.write(project, doc)
+    before = snapshot(project)
+    assert sync_cmd.run(project)["final_state"] == "healthy"
+    assert snapshot(project) == before
+
+
+def test_sync_reports_tool_config_adopted_through_a_link(tmp_path, monkeypatch):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "configs/grok.toml", TOOL_CONFIG[".grok/config.toml"])
+    (project / ".grok").mkdir()
+    os.symlink("../configs/grok.toml", project / ".grok/config.toml")
+    adopted_by_an_earlier_version(project, ".grok/config.toml", monkeypatch)  # recorded as its target
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": "configs/grok.toml", "reason": "tool_config_adopted"} in result["unresolved"]
+    assert snapshot(project) == before
+
+
+def test_sync_keeps_supported_files_inside_tool_folders_healthy(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    for rel in (".github/copilot-instructions.md", ".codex/AGENTS.md", "docs/claude.md"):
+        write(project, rel, "Prefer small diffs.\n")
+    os.symlink("../docs/claude.md", project / ".claude/CLAUDE.md")
+    for rel in (".github/copilot-instructions.md", ".codex/AGENTS.md", ".claude/CLAUDE.md"):
+        assert add_cmd.run(project, rel).status == "added"
+    write(project, ".claude/rules/testing.md", RULE)
+    assert add_cmd.run(project, ".claude/rules/testing.md").status == "added"
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert result["mode"] == "healthy", result
+    assert snapshot(project) == before
+
+
+def test_guard_lets_adopted_tool_config_be_restored(tmp_path, monkeypatch):
+    from superctx.guard import handle_pre_tool_use
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".grok/config.toml", TOOL_CONFIG[".grok/config.toml"])
+    adopted_by_an_earlier_version(project, ".grok/config.toml", monkeypatch)
+
+    def edit(rel):
+        return handle_pre_tool_use({"cwd": str(project), "tool_name": "Write",
+                                    "tool_input": {"file_path": str(project / rel)}})
+
+    assert edit(".grok/config.toml") == (0, "")
+    assert edit("CLAUDE.md")[0] == 2  # other pointers are still steered to the hub
+
+
+def test_cli_explains_how_to_recover_adopted_tool_config(tmp_path, monkeypatch, capsys):
+    from superctx.__main__ import main
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".claude/settings.json", TOOL_CONFIG[".claude/settings.json"])
+    adopted_by_an_earlier_version(project, ".claude/settings.json", monkeypatch)
+    capsys.readouterr()
+
+    assert main(["sync", str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "! .claude/settings.json: tool_config_adopted" in out
+    for step in (".ctx/sources/.claude/settings.json", "[[natives]]", "## From: .claude/settings.json"):
+        assert step in out
 
 
 @pytest.mark.parametrize("given", ["docs/architecture", "docs/architecture/", "./docs/architecture"])

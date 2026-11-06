@@ -200,6 +200,29 @@ def in_tool_folder(rel: str) -> bool:
                for conv in load_conventions())
 
 
+def adopted_tool_config(project_dir: Path, pointers: list[str]) -> set[str]:
+    """Pointer paths that are tool configuration: inside a tool-owned folder, or the target of
+    a link there (versions before 0.2.2 adopted both with `add`)."""
+    project_dir = Path(project_dir).resolve()
+    found = {rel for rel in pointers if in_tool_folder(rel)}
+    rest = set(pointers) - found
+    for conv in load_conventions():
+        if conv["kind"] != "folder" or not rest:
+            continue
+        for dirpath, dirnames, filenames in os.walk(project_dir / conv["path"]):
+            for name in filenames:
+                path = Path(dirpath) / name
+                if not path.is_symlink() or lookup_known_convention(path.relative_to(project_dir).as_posix()):
+                    continue
+                try:
+                    target = path.resolve().relative_to(project_dir).as_posix()
+                except ValueError:
+                    continue
+                if target in rest:
+                    found.add(target)
+    return found
+
+
 def folder_candidate(project_dir: Path, rel: str, type_: str, tools: list[str] | None = None,
                      convention: str | None = None) -> dict:
     """A whole folder as one resource (reference, or planning under a planning convention)."""

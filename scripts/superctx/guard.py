@@ -6,7 +6,7 @@ import json
 import argparse
 from pathlib import Path
 from .status import detect_repo_state
-from . import core
+from . import core, registry
 
 def classify_write_path(path_str: str, tracked_paths: set[str]) -> str:
     path_str = path_str.strip().replace("\\", "/").lstrip("/")
@@ -86,6 +86,8 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
         manifest = core.load_manifest(project_dir)
         for entry in manifest.get("files", []):
             tracked_paths.add(entry["path"].replace("\\", "/"))
+        # Tool configuration an earlier version adopted must stay writable so it can be restored.
+        tracked_paths -= registry.adopted_tool_config(project_dir, sorted(tracked_paths))
     except Exception:
         pass
 
