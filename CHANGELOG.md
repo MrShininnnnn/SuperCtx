@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-06
+
 ### Added
-- OpenAI Codex skills (`.agents/skills/`) are adopted like the other tools' skills: moved into the shared `.ctx/skills/` and linked back. Verified with Codex CLI 0.167.0, including its `AGENTS.md` pointer and writes through a connected `.planning` folder. Codex does not read `.claude/skills/`.
+- OpenAI Codex skills (`.agents/skills/`) are adopted like the other tools' skills: moved into the shared `.ctx/skills/` and linked back. Verified with Codex CLI 0.167.0, including its `AGENTS.md` pointer and writes through a connected `.planning` folder. Codex does not read `.claude/skills/`. In a repository already set up with 0.2.0, existing `.agents/skills/` skills are listed as candidates to connect with `/superctx:add`. (#89)
+
+### Changed
+- Grok Build is listed as a reader of the root `CLAUDE.md` and `AGENTS.md`, citing Grok's project-rules documentation, verified with Grok Build 1.0.70. Tool lists are written during setup or adoption, so manifests created before 0.2.1 keep their stored lists. (#90)
+- Cursor is no longer listed as a reader of `.agents/skills/`, which has not been verified for Cursor. (#89)
+
+### Fixed
+- The opt-in real-tool skill checks for OpenAI Codex and Grok Build (`.grok/skills/`) now require the bundled script to run: its token appears only in the script's output, so quoting the script can no longer pass. (#89, #91)
 
 ## [0.2.0] - 2026-11-05
 
