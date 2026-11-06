@@ -40,11 +40,6 @@ LEGACY_OR_UNCERTAIN_CANDIDATES = [
         note="folder sync not enabled yet",
     ),
     DiscoveryCandidate(
-        path=".agents/skills",
-        label="Antigravity skills candidate",
-        note="folder sync not enabled yet",
-    ),
-    DiscoveryCandidate(
         path=".agents/hooks.json",
         label="Antigravity hooks configuration",
         note="not confirmed official support",

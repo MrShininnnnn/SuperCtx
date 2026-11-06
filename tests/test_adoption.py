@@ -767,7 +767,9 @@ def test_codex_skills_are_linked_into_the_shared_skills_folder(tmp_path):
     assert ".agents/skills/release" in result["init_result"]["linked"]
     assert os.readlink(project / ".agents/skills/release") == "../../.ctx/skills/release"
     assert snapshot(project / ".ctx/skills/release") == before
-    assert sync_cmd.run(project)["mutated"] is False
+    assert ".agents/skills" not in result["init_result"]["untracked"]  # the folder itself is never a candidate
+    again = sync_cmd.run(project)
+    assert again["mutated"] is False and ".agents/skills" not in again["candidates"]
 
 
 def test_grok_configuration_is_never_adopted(tmp_path):
