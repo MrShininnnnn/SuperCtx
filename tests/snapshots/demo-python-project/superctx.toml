@@ -12,14 +12,14 @@ canonical = ".ctx/SUPERCTX.md"
 resource = "instructions"
 path = "CLAUDE.md"
 mode = "pointer"
-tools = ["Claude Code"]
+tools = ["Claude Code", "Grok Build"]
 backup = true
 
 [[natives]]
 resource = "instructions"
 path = "AGENTS.md"
 mode = "pointer"
-tools = ["OpenAI Codex", "Cursor", "GitHub Copilot", "Windsurf", "Aider", "Zed", "Jules", "Devin", "Gemini CLI (opt-in)"]
+tools = ["OpenAI Codex", "Cursor", "GitHub Copilot", "Windsurf", "Aider", "Zed", "Jules", "Devin", "Gemini CLI (opt-in)", "Grok Build"]
 backup = true
 
 [[natives]]
