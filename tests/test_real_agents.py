@@ -130,6 +130,9 @@ def shared_repo(tmp_path_factory) -> Path:
         files[f"{folder}/{name}/SKILL.md"] = SHARED_SKILL_MD.format(name=name)
         files[f"{folder}/{name}/scripts/run.sh"] = f"#!/bin/sh\necho SCRIPT-{token}\n"
         files[f"{folder}/{name}/references/guide.md"] = f"# Guide\n\nThe reference codeword is REF-{token}.\n"
+    # Codex can run commands, so its script computes its token: it appears only in the
+    # script's output, and quoting the script instead of running it cannot pass.
+    files[".agents/skills/sctx-ship/scripts/run.sh"] = "#!/bin/sh\necho SCRIPT-$((3000 + 141))\n"
     set_up(root, files, executable=tuple(f"{f}/{n}/scripts/run.sh" for f, (n, _) in SKILLS.items()))
     for folder in (".claude/skills", ".cursor/skills", ".grok/skills", ".agents/skills"):
         name = SKILLS[folder][0]
@@ -301,6 +304,7 @@ def test_codex_discovers_only_skills_in_its_own_folder(shared_repo):
 
 @needs_codex
 def test_codex_runs_a_linked_skill_with_its_bundled_files(shared_repo):
+    assert "3141" not in (shared_repo / ".agents/skills/sctx-ship/scripts/run.sh").read_text(encoding="utf-8")
     answer = ask_codex(shared_repo, "Use the sctx-ship skill.")
     assert "SCRIPT-3141" in answer and "REF-3141" in answer, answer
 
