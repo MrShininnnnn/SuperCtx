@@ -23,8 +23,8 @@ kind          = "instruction-file"
 import_syntax = "claude-at-import"
 tools         = ["Claude Code", "Grok Build"]
 source        = "https://code.claude.com/docs/en/claude-code/memory"
-additional_source = "https://docs.x.ai/build/features/skills-plugins-marketplaces"
 verified      = "2026-05-29"
+note          = "Root instruction discovery verified with Grok Build 1.0.70 on 2026-11-04. See https://docs.x.ai/build/features/project-rules."
 
 [[convention]]
 path          = "AGENTS.md"
@@ -32,9 +32,8 @@ kind          = "instruction-file"
 import_syntax = "plain-pointer"
 tools         = ["OpenAI Codex", "Cursor", "GitHub Copilot", "Windsurf", "Aider", "Zed", "Jules", "Devin", "Gemini CLI (opt-in)", "Grok Build"]
 source        = "https://agents.md/"
-additional_source = "https://docs.x.ai/build/features/skills-plugins-marketplaces"
 verified      = "2026-05-29"
-note          = "Linux Foundation / Agentic AI Foundation open standard; read by 25+ tools. Claude Code is NOT on the list (uses CLAUDE.md)."
+note          = "Linux Foundation / Agentic AI Foundation open standard; read by 25+ tools. Claude Code is NOT on the list (uses CLAUDE.md). Root instruction discovery verified with Grok Build 1.0.70 on 2026-11-04. See https://docs.x.ai/build/features/project-rules."
 
 [[convention]]
 path          = "GEMINI.md"
