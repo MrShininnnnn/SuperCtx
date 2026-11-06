@@ -42,6 +42,12 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
             "Please inspect the setup."
         )
 
+    try:
+        registry.check_readable(project_dir)
+    except registry.ScanError as e:
+        raise AddError(f"Cannot add {input_path}: tool_folder_unreadable ({e}); SuperCtx cannot tell "
+                       "whether a tool reads this path, so it changed nothing")
+
     # Rules, skills, and folders are adopted as links (matched on the path as given, not resolved).
     native = Path(input_path).as_posix().rstrip("/")
     resource = next((c for c in registry.detect_resources(project_dir) if c["path"] == native), None)

@@ -56,6 +56,20 @@ def _converge_policy(project_dir: Path, manifest: dict, skip: set[str] = frozens
     return changed
 
 
+def _unreadable(e: Exception) -> dict:
+    return {
+        "mode": "inspect",
+        "state": "managed_needs_repair",
+        "final_state": "needs_attention",
+        "mutated": False,
+        "message": (
+            f"tool_folder_unreadable: SuperCtx could not read {e}, so it cannot tell which "
+            "paths are tool configuration and changed nothing. Make the folder readable "
+            "and run sync again."
+        ),
+    }
+
+
 def run(project_dir: Path) -> dict:
     project_dir = Path(project_dir)
     links = core.symlinked_ctx_entries(project_dir)
@@ -67,6 +81,10 @@ def run(project_dir: Path) -> dict:
             "mutated": False,
             "message": core.symlinked_ctx_message(links)
         }
+    try:
+        registry.check_readable(project_dir)
+    except registry.ScanError as e:
+        return _unreadable(e)
     try:
         migrated = _migrate(project_dir)
     except manifest_mod.MigrationError as e:
@@ -201,17 +219,7 @@ def _run(project_dir: Path) -> dict:
         try:
             tool_config = registry.adopted_tool_config(project_dir, [e["path"] for e in manifest.get("files", [])])
         except registry.ScanError as e:
-            return {
-                "mode": "inspect",
-                "state": "managed_needs_repair",
-                "final_state": "needs_attention",
-                "mutated": False,
-                "message": (
-                    f"tool_folder_unreadable: SuperCtx could not read {e}, so it cannot tell which "
-                    "pointers are tool configuration and changed nothing. Make the folder readable "
-                    "and run sync again."
-                ),
-            }
+            return _unreadable(e)
 
         for entry in manifest.get("files", []):
             rel = entry["path"]
