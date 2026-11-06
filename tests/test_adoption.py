@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -254,6 +255,8 @@ def test_a_scan_error_while_comparing_with_the_backup_is_not_a_match(tmp_path, m
         return real_scandir(path)
 
     monkeypatch.setattr(os, "scandir", scandir)
+    # Isolate the backup comparison: the tool-folder scan would refuse the whole run first.
+    monkeypatch.setattr(registry, "adopted_tool_config", lambda project_dir, pointers: set())
     result = sync_cmd.run(project)
     monkeypatch.undo()
 
@@ -1092,6 +1095,285 @@ def test_add_still_links_rules_and_skills_inside_tool_folders(tmp_path, rel, can
 
     assert add_cmd.run(project, rel).status == "added"
     assert os.readlink(project / rel) == canonical
+
+
+def adopted_by_an_earlier_version(project: Path, rel: str, monkeypatch) -> None:
+    """What `add` did before 0.2.2: tool configuration became a pointer."""
+    with monkeypatch.context() as m:
+        m.setattr(registry, "in_tool_folder", lambda rel: False)
+        m.setattr(registry, "adopted_tool_config", lambda project_dir, pointers: set())
+        assert add_cmd.run(project, rel).status == "added"
+
+
+@pytest.mark.parametrize("rel", sorted(TOOL_CONFIG))
+def test_sync_reports_tool_config_an_earlier_version_adopted_without_touching_it(tmp_path, rel, monkeypatch):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, rel, TOOL_CONFIG[rel])
+    adopted_by_an_earlier_version(project, rel, monkeypatch)
+
+    # Flagged whether the pointer is still there, was deleted, or the original was restored.
+    for step in ("pointer", "deleted", "restored"):
+        if step == "deleted":
+            os.unlink(project / rel)
+        elif step == "restored":
+            shutil.copy2(core.sources_dir(project) / rel, project / rel)
+        before = snapshot(project)
+        result = sync_cmd.run(project)
+        assert result["final_state"] == "needs_attention", step
+        assert {"path": rel, "reason": "tool_config_adopted"} in result["unresolved"], step
+        assert snapshot(project) == before, step
+
+    assert (project / rel).read_text(encoding="utf-8") == TOOL_CONFIG[rel]
+    # The rest of the recovery: forget the native, and sync is healthy without touching it.
+    doc = manifest.load_v2(project)
+    doc["natives"] = [n for n in doc["natives"] if n["path"] != rel]
+    manifest.write(project, doc)
+    before = snapshot(project)
+    assert sync_cmd.run(project)["final_state"] == "healthy"
+    assert snapshot(project) == before
+
+
+def test_sync_reports_tool_config_adopted_through_a_link(tmp_path, monkeypatch):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "configs/grok.toml", TOOL_CONFIG[".grok/config.toml"])
+    (project / ".grok").mkdir()
+    os.symlink("../configs/grok.toml", project / ".grok/config.toml")
+    adopted_by_an_earlier_version(project, ".grok/config.toml", monkeypatch)  # recorded as its target
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": "configs/grok.toml", "reason": "tool_config_adopted"} in result["unresolved"]
+    assert snapshot(project) == before
+
+
+def test_sync_reports_tool_config_adopted_through_a_folder_link(tmp_path, monkeypatch):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "configs/grok.toml", TOOL_CONFIG[".grok/config.toml"])
+    (project / ".grok").mkdir()
+    os.symlink("../configs", project / ".grok/configs")
+    adopted_by_an_earlier_version(project, ".grok/configs/grok.toml", monkeypatch)
+    os.unlink(project / "configs/grok.toml")
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": "configs/grok.toml", "reason": "tool_config_adopted"} in result["unresolved"]
+    assert snapshot(project) == before  # the deleted pointer stays deleted
+
+
+def test_tool_config_detection_follows_folder_links_safely(tmp_path, monkeypatch):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    write(project, "more/codex.toml", TOOL_CONFIG[".codex/config.toml"])
+    (project / ".codex").mkdir()
+    (project / "configs").mkdir()
+    os.symlink("../configs", project / ".codex/configs")    # a chain of folder links
+    os.symlink("../more", project / "configs/deep")
+    os.symlink(".", project / ".codex/self")                # cycles
+    os.symlink("../.codex", project / "configs/back")
+    os.symlink(str(outside), project / ".codex/outside")    # outside the repository
+    os.symlink("missing", project / ".codex/broken")
+    adopted_by_an_earlier_version(project, ".codex/configs/deep/codex.toml", monkeypatch)
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": "more/codex.toml", "reason": "tool_config_adopted"} in result["unresolved"]
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("link, target", [(".grok/config.toml", "../configs/grok.toml"),
+                                          (".grok/configs", "../configs")])
+def test_add_refuses_a_file_a_tool_folder_links_to(tmp_path, link, target):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "configs/grok.toml", TOOL_CONFIG[".grok/config.toml"])
+    (project / ".grok").mkdir()
+    os.symlink(target, project / link)
+    before = snapshot(project)
+
+    with pytest.raises(add_cmd.AddError, match="tool_folder"):
+        add_cmd.run(project, "configs/grok.toml")
+    assert snapshot(project) == before
+
+
+def test_sync_keeps_supported_files_inside_tool_folders_healthy(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    for rel in (".github/copilot-instructions.md", ".codex/AGENTS.md", "docs/claude.md"):
+        write(project, rel, "Prefer small diffs.\n")
+    os.symlink("../docs/claude.md", project / ".claude/CLAUDE.md")
+    for rel in (".github/copilot-instructions.md", ".codex/AGENTS.md", ".claude/CLAUDE.md"):
+        assert add_cmd.run(project, rel).status == "added"
+    write(project, ".claude/rules/testing.md", RULE)
+    assert add_cmd.run(project, ".claude/rules/testing.md").status == "added"
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert result["mode"] == "healthy", result
+    assert snapshot(project) == before
+
+
+def test_sync_keeps_an_instruction_file_healthy_when_its_tool_folder_is_a_link(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "shared/github/copilot-instructions.md", "Prefer small diffs.\n")
+    os.symlink("shared/github", project / ".github")
+    assert add_cmd.run(project, ".github/copilot-instructions.md").status == "added"
+    before = snapshot(project)
+
+    assert sync_cmd.run(project)["mode"] == "healthy"
+    assert snapshot(project) == before
+
+
+def shared_tool_folders(tmp_path, monkeypatch, folder: str, name: str, reverse: bool) -> Path:
+    """A recognized instruction file also exposed through a second tool folder's alias."""
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, f"shared/{name}", "Prefer small diffs.\n")
+    os.symlink("shared", project / folder)
+    os.symlink("shared", project / ".grok")
+    if reverse:  # the same repository, scanned in the other order
+        convs = registry.load_conventions()
+        monkeypatch.setattr(registry, "load_conventions", lambda path=None: list(reversed(convs)))
+    return project
+
+
+ALIASED = [(".codex", "AGENTS.md"), (".github", "copilot-instructions.md")]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("folder, name", ALIASED)
+def test_add_refuses_an_instruction_file_another_tool_folder_also_exposes(tmp_path, monkeypatch, folder, name, reverse):
+    project = shared_tool_folders(tmp_path, monkeypatch, folder, name, reverse)
+    before = snapshot(project)
+
+    for given in (f"shared/{name}", f"{folder}/{name}"):
+        with pytest.raises(add_cmd.AddError, match="tool_folder"):
+            add_cmd.run(project, given)
+    assert snapshot(project) == before
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("folder, name", ALIASED)
+def test_sync_reports_an_instruction_file_another_tool_folder_also_exposes(tmp_path, monkeypatch, folder, name, reverse):
+    project = shared_tool_folders(tmp_path, monkeypatch, folder, name, reverse)
+    adopted_by_an_earlier_version(project, f"shared/{name}", monkeypatch)
+    os.unlink(project / f"shared/{name}")
+    before = snapshot(project)
+
+    result = sync_cmd.run(project)
+
+    assert {"path": f"shared/{name}", "reason": "tool_config_adopted"} in result["unresolved"]
+    assert snapshot(project) == before  # the deleted pointer stays deleted
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_sync_keeps_an_instruction_file_healthy_through_its_own_tool_folder_link(tmp_path, monkeypatch, reverse):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "shared/AGENTS.md", "Prefer small diffs.\n")
+    os.symlink("shared", project / ".codex")
+    if reverse:
+        convs = registry.load_conventions()
+        monkeypatch.setattr(registry, "load_conventions", lambda path=None: list(reversed(convs)))
+    assert add_cmd.run(project, ".codex/AGENTS.md").status == "added"
+    before = snapshot(project)
+
+    assert sync_cmd.run(project)["mode"] == "healthy"
+    assert snapshot(project) == before
+
+
+needs_permissions = pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0,
+                                       reason="root reads unreadable folders")
+
+
+def unreadable(project: Path, rel: str):
+    """Run the body with a folder that can be entered but not listed, then restore it."""
+    class Ctx:
+        def __enter__(self):
+            (project / rel).chmod(0o300)
+        def __exit__(self, *exc):
+            (project / rel).chmod(0o755)
+    return Ctx()
+
+
+def grok_links_to_configs(tmp_path: Path) -> Path:
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, "configs/grok.toml", TOOL_CONFIG[".grok/config.toml"])
+    (project / ".grok").mkdir()
+    os.symlink("../configs/grok.toml", project / ".grok/config.toml")
+    return project
+
+
+@needs_permissions
+def test_add_refuses_when_a_tool_folder_cannot_be_read(tmp_path):
+    project = grok_links_to_configs(tmp_path)
+    before = snapshot(project)
+
+    with unreadable(project, ".grok"):
+        with pytest.raises(add_cmd.AddError, match="tool_folder_unreadable.*\\.grok"):
+            add_cmd.run(project, "configs/grok.toml")
+    assert snapshot(project) == before
+
+
+@needs_permissions
+def test_sync_changes_nothing_when_a_tool_folder_cannot_be_read(tmp_path, monkeypatch, capsys):
+    from superctx.__main__ import main
+    project = grok_links_to_configs(tmp_path)
+    adopted_by_an_earlier_version(project, "configs/grok.toml", monkeypatch)
+    os.unlink(project / "configs/grok.toml")
+    os.unlink(project / "CLAUDE.md")  # an ordinary pointer is not recreated either
+    before = snapshot(project)
+    capsys.readouterr()
+
+    with unreadable(project, ".grok"):
+        result = sync_cmd.run(project)
+        code = main(["sync", str(project)])
+    out = capsys.readouterr().out
+
+    assert result["final_state"] == "needs_attention" and result["mutated"] is False
+    assert code == 1 and "tool_folder_unreadable" in out and ".grok" in out
+    assert snapshot(project) == before  # the missing pointer is not recreated
+    assert sync_cmd.run(project)["unresolved"] == [{"path": "configs/grok.toml", "reason": "tool_config_adopted"}]
+
+
+def test_guard_lets_adopted_tool_config_be_restored(tmp_path, monkeypatch):
+    from superctx.guard import handle_pre_tool_use
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".grok/config.toml", TOOL_CONFIG[".grok/config.toml"])
+    adopted_by_an_earlier_version(project, ".grok/config.toml", monkeypatch)
+
+    def edit(rel):
+        return handle_pre_tool_use({"cwd": str(project), "tool_name": "Write",
+                                    "tool_input": {"file_path": str(project / rel)}})
+
+    assert edit(".grok/config.toml") == (0, "")
+    assert edit("CLAUDE.md")[0] == 2  # other pointers are still steered to the hub
+
+
+def test_cli_explains_how_to_recover_adopted_tool_config(tmp_path, monkeypatch, capsys):
+    from superctx.__main__ import main
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".claude/settings.json", TOOL_CONFIG[".claude/settings.json"])
+    adopted_by_an_earlier_version(project, ".claude/settings.json", monkeypatch)
+    capsys.readouterr()
+
+    assert main(["sync", str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "! .claude/settings.json: tool_config_adopted" in out
+    for step in (".ctx/sources/.claude/settings.json", "[[natives]]", "## From: .claude/settings.json"):
+        assert step in out
 
 
 @pytest.mark.parametrize("given", ["docs/architecture", "docs/architecture/", "./docs/architecture"])

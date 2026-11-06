@@ -20,6 +20,12 @@ REASONS = {
     "native_edited": "it holds content someone wrote, so SuperCtx left it unchanged",
     "native_replaced": "a file or folder replaced what SuperCtx published there",
     "link_retargeted": "the link points somewhere other than its canonical copy in .ctx/",
+    "tool_config_adopted": (
+        "an earlier SuperCtx version replaced this tool configuration with a pointer, and SuperCtx "
+        "leaves it alone. To recover: copy the original back from .ctx/sources/<path>, delete "
+        "its [[natives]] entry from .ctx/superctx.toml, and delete its ## From: <path> section from "
+        ".ctx/SUPERCTX.md"
+    ),
     "canonical_missing": "its canonical copy in .ctx/ is missing; restore it from version control or .ctx/sources/",
     "not_verified": "SuperCtx has not verified this tool's behavior through a link",
     "already_a_symlink": "it is already a symlink you manage",
@@ -37,8 +43,8 @@ REASONS = {
 }
 
 
-def _explain(reason: str) -> str:
-    return f"{reason}: {REASONS[reason]}" if reason in REASONS else reason
+def _explain(reason: str, path: str = "<path>") -> str:
+    return f"{reason}: {REASONS[reason].replace('<path>', path)}" if reason in REASONS else reason
 
 
 def _print_left_in_place(result: dict) -> None:
@@ -173,7 +179,7 @@ def _cmd_sync(project_dir: Path) -> int:
         if result["unresolved"]:
             print("Unresolved shims:")
             for item in result["unresolved"]:
-                print(f"  ! {item['path']}: {_explain(item['reason'])}")
+                print(f"  ! {item['path']}: {_explain(item['reason'], item['path'])}")
             print()
 
         if result["warnings"]:

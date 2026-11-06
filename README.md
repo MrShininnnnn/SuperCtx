@@ -116,6 +116,7 @@ Sync never overwrites something it did not write. It leaves it in place, reports
 | `native_replaced` | a real file or folder replaced a link | merge its changes into the `.ctx/` copy, delete it, run sync |
 | `link_retargeted` | a link now points somewhere else | delete the link, run sync |
 | `canonical_missing` | the `.ctx/` copy is gone | restore it from version control (or `.ctx/sources/` on the machine that set it up), run sync |
+| `tool_config_adopted` | a version before 0.2.2 replaced tool configuration, such as `.grok/config.toml`, with a pointer; sync no longer writes it | copy the original back from `.ctx/sources/<same path>`, delete its `[[natives]]` entry from `.ctx/superctx.toml` and its `## From:` section from `.ctx/SUPERCTX.md`, run sync |
 
 Deleted pointers and links are recreated by the next sync.
 

@@ -363,6 +363,12 @@ def detect_repo_state(project_dir: Path) -> dict:
             if backup_required and not backup.is_file():
                 reasons.append("missing_backup")
 
+        try:
+            if registry.adopted_tool_config(project_dir, [entry["path"] for entry in files]):
+                reasons.append("tool_config_adopted")
+        except registry.ScanError:
+            reasons.append("tool_folder_unreadable")
+
         for link in links:
             link_state = adopt.link_state(project_dir, link["path"], link["canonical"], link["published"])
             if link_state in ("missing", "pending"):

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import adopt, core, manifest as manifest_mod, shim
+from . import adopt, core, manifest as manifest_mod, registry, shim
 
 
 class SyncError(Exception):
@@ -17,7 +17,7 @@ class SyncError(Exception):
     pass
 
 
-def _converge_policy(project_dir: Path, manifest: dict) -> bool:
+def _converge_policy(project_dir: Path, manifest: dict, skip: set[str] = frozenset()) -> bool:
     """Non-destructively bring an existing managed repo up to the current edit policy.
 
     Idempotently: writes .ctx/sources/README.md if missing, prepends the hub policy
@@ -42,6 +42,8 @@ def _converge_policy(project_dir: Path, manifest: dict) -> bool:
 
     for entry in manifest.get("files", []):
         rel = entry["path"]
+        if rel in skip:
+            continue
         live = project_dir / rel
         backup_required = entry.get("backup_required", True)
         if shim.is_generated_pointer_file(project_dir, rel, backup_required):
@@ -195,6 +197,21 @@ def _run(project_dir: Path) -> dict:
         repaired: list[str] = []
         unresolved: list[dict] = []
         warnings: list[dict] = []
+        # Tool configuration an earlier version turned into a pointer: reported, never written.
+        try:
+            tool_config = registry.adopted_tool_config(project_dir, [e["path"] for e in manifest.get("files", [])])
+        except registry.ScanError as e:
+            return {
+                "mode": "inspect",
+                "state": "managed_needs_repair",
+                "final_state": "needs_attention",
+                "mutated": False,
+                "message": (
+                    f"tool_folder_unreadable: SuperCtx could not read {e}, so it cannot tell which "
+                    "pointers are tool configuration and changed nothing. Make the folder readable "
+                    "and run sync again."
+                ),
+            }
 
         for entry in manifest.get("files", []):
             rel = entry["path"]
@@ -204,6 +221,9 @@ def _run(project_dir: Path) -> dict:
 
             if backup_required and not backup.is_file():
                 warnings.append({"path": rel, "reason": "missing_backup"})
+            if rel in tool_config:
+                unresolved.append({"path": rel, "reason": "tool_config_adopted"})
+                continue
 
             pub = shim.publish_pointer(
                 project_dir, rel, backup_required=backup_required, published=entry.get("published", True)
@@ -233,7 +253,7 @@ def _run(project_dir: Path) -> dict:
 
         # Bring policy surfaces up to date in the same run (README, hub header,
         # stale shim wording), conservatively and idempotently.
-        converged = _converge_policy(project_dir, manifest)
+        converged = _converge_policy(project_dir, manifest, tool_config)
 
         final_state = "needs_attention" if unresolved else "healthy"
         msg = "SuperCtx shims repair complete with some unresolved issues." if unresolved else "SuperCtx shims repaired."
