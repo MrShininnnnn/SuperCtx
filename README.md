@@ -29,7 +29,7 @@ GEMINI.md               # generated shim
 
 Original instruction files are backed up under `.ctx/sources/` before SuperCtx replaces live instruction files with shims.
 
-Supported rules and skills (currently Claude Code's `.claude/rules/` and `.claude/skills/`, Cursor's `.cursor/rules/` and `.cursor/skills/`, and Grok Build's `.grok/skills/`) are moved into `.ctx/` and linked back to their original paths, so the tool keeps loading them. Reference and planning folders (for example `docs/architecture` or `.planning`) are connected the same way with `/superctx:add <folder>`, so existing readers and writers keep using their original paths. Anything SuperCtx cannot move safely stays where it is, and sync says why.
+Supported rules and skills (currently Claude Code's `.claude/rules/` and `.claude/skills/`, Cursor's `.cursor/rules/` and `.cursor/skills/`, Grok Build's `.grok/skills/`, and OpenAI Codex's `.agents/skills/`) are moved into `.ctx/` and linked back to their original paths, so the tool keeps loading them. Reference and planning folders (for example `docs/architecture` or `.planning`) are connected the same way with `/superctx:add <folder>`, so existing readers and writers keep using their original paths. Anything SuperCtx cannot move safely stays where it is, and sync says why.
 
 Which tools and versions were tested, and what v0.2 leaves alone (commands, subagents, hooks, MCP and other tool configuration), is in [architecture/compatibility.md](architecture/compatibility.md).
 

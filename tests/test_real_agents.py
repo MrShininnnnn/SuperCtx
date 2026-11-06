@@ -27,6 +27,7 @@ needs_claude = pytest.mark.skipif(shutil.which("claude") is None, reason="Claude
 # Cursor's CLI installs as both `agent` and `cursor-agent`; the second name is unambiguous.
 needs_cursor = pytest.mark.skipif(shutil.which("cursor-agent") is None, reason="Cursor Agent CLI is not installed")
 needs_grok = pytest.mark.skipif(shutil.which("grok") is None, reason="Grok Build is not installed")
+needs_codex = pytest.mark.skipif(shutil.which("codex") is None, reason="Codex CLI is not installed")
 
 SKILL_MD = """---
 name: review
@@ -62,7 +63,8 @@ If you cannot run commands, report the exact text of scripts/run.sh instead.
 Then read references/guide.md in this skill's folder and report the codeword it contains.
 """
 SKILLS = {".claude/skills": ("sctx-review", "7731"), ".cursor/skills": ("sctx-lint", "5150"),
-          ".grok/skills": ("sctx-deploy", "2207"), "misc/skills": ("sctx-fmt", "9090")}
+          ".grok/skills": ("sctx-deploy", "2207"), ".agents/skills": ("sctx-ship", "3141"),
+          "misc/skills": ("sctx-fmt", "9090")}
 # Grok trusts the folder for this run only (nothing is written to its trust store) and
 # skips the user's own Claude and Cursor hooks and MCP servers.
 GROK_ENV = {"GROK_FOLDER_TRUST": "0", "GROK_CLAUDE_HOOKS_ENABLED": "false", "GROK_CLAUDE_MCPS_ENABLED": "false",
@@ -128,8 +130,11 @@ def shared_repo(tmp_path_factory) -> Path:
         files[f"{folder}/{name}/SKILL.md"] = SHARED_SKILL_MD.format(name=name)
         files[f"{folder}/{name}/scripts/run.sh"] = f"#!/bin/sh\necho SCRIPT-{token}\n"
         files[f"{folder}/{name}/references/guide.md"] = f"# Guide\n\nThe reference codeword is REF-{token}.\n"
+    # Codex can run commands, so its script computes its token: it appears only in the
+    # script's output, and quoting the script instead of running it cannot pass.
+    files[".agents/skills/sctx-ship/scripts/run.sh"] = "#!/bin/sh\necho SCRIPT-$((3000 + 141))\n"
     set_up(root, files, executable=tuple(f"{f}/{n}/scripts/run.sh" for f, (n, _) in SKILLS.items()))
-    for folder in (".claude/skills", ".cursor/skills", ".grok/skills"):
+    for folder in (".claude/skills", ".cursor/skills", ".grok/skills", ".agents/skills"):
         name = SKILLS[folder][0]
         assert os.readlink(root / folder / name) == f"../../.ctx/skills/{name}"
     assert not os.path.islink(root / "misc/skills/sctx-fmt")
@@ -203,6 +208,24 @@ def ask_grok(root: Path, prompt: str, *allow: str) -> str:
     return event.get("text", "")
 
 
+def ask_codex(root: Path, prompt: str, write: bool = False) -> str:
+    """Run Codex non-interactively and return its final answer; fail unless it succeeded.
+
+    The sandbox is read-only unless `write` is set (workspace-write). The user's own
+    config.toml is not loaded and the session is not saved.
+    """
+    out = root.parent / "codex-last-message.txt"
+    out.unlink(missing_ok=True)
+    proc = subprocess.run(
+        ["codex", "exec", "--ephemeral", "--ignore-user-config", "-s", "workspace-write" if write else "read-only",
+         "-C", str(root), "-o", str(out), prompt],
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=300,
+    )
+    if proc.returncode != 0 or not out.is_file():
+        pytest.fail(f"codex run failed (exit {proc.returncode}): {(proc.stdout + proc.stderr)[-400:]}")
+    return out.read_text(encoding="utf-8")
+
+
 def grok_inspect(root: Path) -> dict:
     proc = subprocess.run(["grok", "inspect", "--json"], cwd=root, capture_output=True, text=True, timeout=120,
                           env={**os.environ, **GROK_ENV})
@@ -266,6 +289,33 @@ def test_cursor_does_not_see_a_skill_outside_its_skill_folders(shared_repo):
     # checks above show discovery through the links, not a search of the repository.
     answer = ask_cursor(shared_repo, SKILL_PROMPT_CURSOR.format(name="sctx-fmt"))
     assert "NO-SUCH-SKILL" in answer and "REF-9090" not in answer, answer
+
+
+@needs_codex
+def test_codex_discovers_only_skills_in_its_own_folder(shared_repo):
+    # Codex scans .agents/skills only: the linked skill there is listed, while the
+    # Claude Code skill (unlike in Cursor and Grok) and the control are not.
+    answer = ask_codex(shared_repo, "List the names of every skill available to you, comma separated, "
+                                    "and nothing else. Do not run commands or read files.")
+    names = {n.strip() for n in answer.split(",")}
+    assert "sctx-ship" in names, answer
+    assert not names & {"sctx-review", "sctx-lint", "sctx-deploy", "sctx-fmt"}, answer
+
+
+@needs_codex
+def test_codex_runs_a_linked_skill_with_its_bundled_files(shared_repo):
+    assert "3141" not in (shared_repo / ".agents/skills/sctx-ship/scripts/run.sh").read_text(encoding="utf-8")
+    answer = ask_codex(shared_repo, "Use the sctx-ship skill.")
+    assert "SCRIPT-3141" in answer and "REF-3141" in answer, answer
+
+
+@needs_codex
+def test_codex_reads_the_hub_through_the_agents_md_pointer(shared_repo):
+    # Both codewords exist only in the hub; AGENTS.md is a pointer to it.
+    assert "AGENTS-3390" not in (shared_repo / "AGENTS.md").read_text(encoding="utf-8")
+    answer = ask_codex(shared_repo, "What are the hub codeword and the agents codeword defined in this "
+                                    "project's shared context? Reply with only the two codewords.")
+    assert "HUB-7781" in answer and "AGENTS-3390" in answer, answer
 
 
 @needs_grok
@@ -366,4 +416,11 @@ def test_grok_updates_progress_through_the_planning_link(folders_repo):
 def test_cursor_updates_progress_through_the_planning_link(folders_repo):
     line = "- step 4 done (cursor)"
     ask_cursor(folders_repo, UPDATE_PROMPT.format(line=line), write=True)
+    assert_progress_written_through_link(folders_repo, line)
+
+
+@needs_codex
+def test_codex_updates_progress_through_the_planning_link(folders_repo):
+    line = "- step 5 done (codex)"
+    ask_codex(folders_repo, UPDATE_PROMPT.format(line=line), write=True)
     assert_progress_written_through_link(folders_repo, line)

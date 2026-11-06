@@ -757,16 +757,17 @@ def test_skills_sharing_a_name_across_tools_are_both_preserved_and_reported(tmp_
     assert ".claude/skills/review" in result["init_result"]["linked"]
 
 
-def test_codex_skills_are_left_in_place_until_verified(tmp_path):
+def test_codex_skills_are_linked_into_the_shared_skills_folder(tmp_path):
     project = happy_repo(tmp_path)
     write_skill(project, ".agents/skills", "release", "codex")
-    before = snapshot(project / ".agents")
+    before = snapshot(project / ".agents/skills/release")
 
     result = sync_cmd.run(project)
 
-    assert {"path": ".agents/skills/release", "type": "skill", "reason": "not_verified"} in \
-        result["init_result"]["left_in_place"]
-    assert snapshot(project / ".agents") == before
+    assert ".agents/skills/release" in result["init_result"]["linked"]
+    assert os.readlink(project / ".agents/skills/release") == "../../.ctx/skills/release"
+    assert snapshot(project / ".ctx/skills/release") == before
+    assert sync_cmd.run(project)["mutated"] is False
 
 
 def test_grok_configuration_is_never_adopted(tmp_path):

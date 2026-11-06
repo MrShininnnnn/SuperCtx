@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- OpenAI Codex skills (`.agents/skills/`) are adopted like the other tools' skills: moved into the shared `.ctx/skills/` and linked back. Verified with Codex CLI 0.167.0, including its `AGENTS.md` pointer and writes through a connected `.planning` folder. Codex does not read `.claude/skills/`.
+
 ## [0.2.0] - 2026-11-05
 
 ### Added
