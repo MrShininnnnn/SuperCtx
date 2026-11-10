@@ -1486,6 +1486,33 @@ def test_pointer_health_survives_an_unreadable_unrelated_folder(tmp_path, mode, 
 
 @needs_permissions
 @pytest.mark.parametrize("mode", [0o000, 0o300])
+@pytest.mark.parametrize("damage, reason", [(None, None), (_delete, "missing_shim"), (_edit_pointer, "broken_shim")])
+@pytest.mark.parametrize("inner", [".claude/CLAUDE.md", ".codex/AGENTS.md", ".github/copilot-instructions.md"])
+def test_root_pointer_stays_guarded_while_another_pointers_folder_cannot_be_read(tmp_path, mode, damage, reason, inner):
+    from superctx.status import detect_repo_state
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, inner, "Prefer small diffs.\n")
+    assert add_cmd.run(project, inner).status == "added"
+    if damage:
+        damage(project / "CLAUDE.md")
+    before = snapshot(project)
+
+    with unreadable(project, inner.split("/")[0], mode):
+        state = detect_repo_state(project)
+        code, msg = guard_edit(project, "CLAUDE.md")
+    assert "tool_folder_unreadable" in state["reasons"], state
+    if damage:
+        assert reason in state["reasons"], state
+        assert code == 2 and "need repair" in msg, msg
+    else:
+        assert not {"missing_shim", "broken_shim"} & set(state["reasons"]), state
+        assert code == 2 and "is a generated SuperCtx shim" in msg, msg
+    assert snapshot(project) == before
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
 def test_guard_lets_adopted_tool_config_be_restored_while_a_folder_cannot_be_read(tmp_path, monkeypatch, mode):
     project = happy_repo(tmp_path)
     sync_cmd.run(project)

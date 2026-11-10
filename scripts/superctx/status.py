@@ -351,14 +351,17 @@ def detect_repo_state(project_dir: Path) -> dict:
             backup = core.sources_dir(project_dir) / rel
             backup_required = entry.get("backup_required", True)
 
-            if not live.is_file():
-                reasons.append("missing_shim")
-            elif not shim.is_generated_pointer_file(project_dir, rel, backup_required):
-                # Repair finishes an interrupted adoption or reports an edit; it
-                # never writes over content someone put there.
-                reasons.append("broken_shim")
-            elif not entry.get("published", True):
-                reasons.append("publication_pending")
+            try:
+                if not live.is_file():
+                    reasons.append("missing_shim")
+                elif not shim.is_generated_pointer_file(project_dir, rel, backup_required):
+                    # Repair finishes an interrupted adoption or reports an edit; it
+                    # never writes over content someone put there.
+                    reasons.append("broken_shim")
+                elif not entry.get("published", True):
+                    reasons.append("publication_pending")
+            except OSError:  # its folder cannot be read, so its health is unknown
+                reasons.append("tool_folder_unreadable")
 
             if backup_required and not backup.is_file():
                 reasons.append("missing_backup")
