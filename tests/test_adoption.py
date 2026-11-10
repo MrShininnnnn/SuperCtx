@@ -1538,6 +1538,31 @@ def test_guard_lets_tool_config_adopted_through_a_link_be_restored_while_a_folde
         assert guard_edit(project, "CLAUDE.md")[0] == 2
 
 
+@pytest.mark.parametrize("candidate", [False, True])
+def test_guard_does_not_call_intact_pointers_broken_when_only_tool_config_was_adopted(
+        tmp_path, monkeypatch, candidate):
+    from superctx.status import detect_repo_state
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".grok/config.toml", TOOL_CONFIG[".grok/config.toml"])
+    adopted_by_an_earlier_version(project, ".grok/config.toml", monkeypatch)
+    if candidate:
+        write(project, "GEMINI.md", "Use Gemini.\n")
+    assert "tool_config_adopted" in detect_repo_state(project)["reasons"]
+    before = snapshot(project)
+
+    # Sync cannot repair adopted tool configuration, and the pointers are intact.
+    code, msg = guard_edit(project, "CLAUDE.md")
+    assert code == 2 and "`CLAUDE.md` is a generated SuperCtx shim, so" in msg and "need repair" not in msg, msg
+    assert guard_edit(project, ".grok/config.toml") == (0, "")
+    assert snapshot(project) == before
+
+    # Real pointer damage alongside it still leads to repair.
+    (project / "CLAUDE.md").unlink()
+    code, msg = guard_edit(project, "CLAUDE.md")
+    assert code == 2 and "need repair" in msg, msg
+
+
 UNVERIFIED = "could not verify"
 
 

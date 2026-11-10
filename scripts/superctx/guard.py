@@ -101,9 +101,11 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
         state = {"state": "not_candidate", "candidates": []}
         if manifest_read:
             unverified = f"{type(e).__name__}: {e}"
-    # An unreadable folder says nothing about the pointers: when it is the only finding, keep
-    # steering their edits to the hub. Pointer and link findings still lead to repair.
-    if state.get("state") == "managed_needs_repair" and set(state.get("reasons", [])) == {"tool_folder_unreadable"}:
+    # An unreadable folder, or tool configuration an earlier version adopted, says nothing about
+    # the pointers, and sync cannot repair either: when they are the only findings, keep steering
+    # pointer edits to the hub. Pointer and link findings still lead to repair.
+    findings = set(state.get("reasons", [])) - {"untracked_candidates_found"}
+    if state.get("state") == "managed_needs_repair" and findings and findings <= {"tool_folder_unreadable", "tool_config_adopted"}:
         state = {**state, "state": "managed_healthy"}
 
     for p in target_paths:
