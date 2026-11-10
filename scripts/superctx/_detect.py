@@ -10,12 +10,26 @@ import json
 import sys
 from pathlib import Path
 
+from . import registry
 from .status import detect_repo_state
 
 
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     project_dir = Path(args[0] if args else ".").resolve()
+    try:
+        registry.check_readable(project_dir)
+    except registry.ScanError as e:
+        # Detection would be incomplete or fail partway; report the folder instead.
+        print(json.dumps({
+            "state": "unreadable",
+            "candidates": [],
+            "reasons": ["tool_folder_unreadable"],
+            "detail": str(e),
+            "recommended_action": "inspect",
+            "recommended_action_mutates_files": False
+        }))
+        return 1
     print(json.dumps(detect_repo_state(project_dir)))
     return 0
 

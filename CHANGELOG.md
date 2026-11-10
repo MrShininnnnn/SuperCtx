@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The internal `_detect` entry point used by the session-start hook reports a tool, rule, skill, or planning folder it cannot read (for example `.grok` with mode `000`) as JSON with state `unreadable`, reason `tool_folder_unreadable`, and the folder, and exits 1, instead of printing a Python traceback or a partial result. It writes nothing; the session-start hook stays silent in this state, as before.
+
 ## [0.2.3] - 2026-11-09
 
 ### Fixed
