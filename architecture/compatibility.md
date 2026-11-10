@@ -1,6 +1,6 @@
 # Tool Compatibility
 
-Which tools SuperCtx adopts resources for, and how each was verified, as of SuperCtx 0.2.3. A resource type is adopted only when its row is **supported**; everything else is discovered and left in place with a reason.
+Which tools SuperCtx adopts resources for, and how each was verified, as of SuperCtx 0.2.4. A resource type is adopted only when its row is **supported**; everything else is discovered and left in place with a reason.
 
 | Tool | Resource | Native path | Published as | Result | Verified with | Date |
 |---|---|---|---|---|---|---|
