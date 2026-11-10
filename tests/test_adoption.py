@@ -1443,15 +1443,45 @@ def guard_edit(project: Path, rel: str):
 
 @needs_permissions
 @pytest.mark.parametrize("mode", [0o000, 0o300])
-def test_guard_still_steers_pointers_while_an_unrelated_folder_cannot_be_read(tmp_path, mode):
+@pytest.mark.parametrize("folder", [".cursor", ".claude"])  # .claude also holds linked rules and skills
+def test_guard_still_steers_pointers_while_an_unrelated_folder_cannot_be_read(tmp_path, mode, folder):
     project = happy_repo(tmp_path)
     sync_cmd.run(project)
-    write(project, ".cursor/notes/private.md", "Unrelated.\n")
+    write(project, f"{folder}/notes/private.md", "Unrelated.\n")
 
-    with unreadable(project, ".cursor", mode):
+    with unreadable(project, folder, mode):
         for rel in ("CLAUDE.md", "AGENTS.md"):
             code, msg = guard_edit(project, rel)
             assert code == 2 and ".ctx/SUPERCTX.md" in msg, (rel, msg)
+
+
+def _delete(p: Path) -> None:
+    p.unlink()
+
+
+def _edit_pointer(p: Path) -> None:
+    p.write_text(p.read_text(encoding="utf-8") + "Local note.\n", encoding="utf-8")
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+@pytest.mark.parametrize("damage, reason", [(_delete, "missing_shim"), (_edit_pointer, "broken_shim")])
+@pytest.mark.parametrize("folder", [".cursor", ".claude"])
+def test_pointer_health_survives_an_unreadable_unrelated_folder(tmp_path, mode, damage, reason, folder):
+    from superctx.status import detect_repo_state
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, f"{folder}/notes/private.md", "Unrelated.\n")
+    damage(project / "CLAUDE.md")
+    before = snapshot(project)
+
+    with unreadable(project, folder, mode):
+        state = detect_repo_state(project)
+        code, msg = guard_edit(project, "CLAUDE.md")
+    assert state["state"] == "managed_needs_repair"
+    assert {reason, "tool_folder_unreadable"} <= set(state["reasons"]), state
+    assert code == 2 and "need repair" in msg and "is a generated SuperCtx shim" not in msg, msg
+    assert snapshot(project) == before
 
 
 @needs_permissions
