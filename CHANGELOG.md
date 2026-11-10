@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Sync now reports tool configuration that a version before 0.2.2 replaced with a pointer, instead of calling the repository healthy. A tracked pointer inside a tool's own folder, or one reached from such a folder through links to files or folders, is listed as `tool_config_adopted` with the recovery steps, and sync exits 1. Link cycles, broken links, and links leaving the repository are skipped. If a folder a tool reaches cannot be read, detection is incomplete, so `add` and sync change nothing and report `tool_folder_unreadable`. Sync never rewrites, re-creates, or refreshes such a file, and the edit guard lets it be written so the original can be restored. Registered instruction files, rules, and skills are unaffected.
 - `add` also refuses a file that a tool's own folder links to, directly or through a linked folder (for example `add configs/grok.toml` when `.grok/config.toml` links to it), since replacing it would break that tool's configuration.
+- A tool, rule, skill, or planning folder that cannot be read (for example `.grok` with mode `000`) no longer makes `add` or sync stop with a Python traceback. Both check these folders before writing anything, report `tool_folder_unreadable` with the folder, exit 1, and change nothing; first-time setup does not create `.ctx/`.
 
 ## [0.2.2] - 2026-11-06
 

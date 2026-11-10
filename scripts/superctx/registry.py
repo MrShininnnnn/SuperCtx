@@ -205,6 +205,36 @@ class ScanError(Exception):
     """A folder a tool reaches could not be read, so tool configuration detection is incomplete."""
 
 
+def check_readable(project_dir: Path) -> None:
+    """Raise ScanError unless every registered tool, rule, skill, and planning folder can be read.
+
+    Run before any write, so an unreadable folder is reported instead of failing partway.
+    """
+    project_dir = Path(project_dir)
+
+    def fail(e: OSError):
+        if isinstance(e, FileNotFoundError):  # removed while scanning
+            return
+        where = os.path.relpath(e.filename, project_dir) if e.filename else "a tool folder"
+        raise ScanError(f"{Path(where).as_posix()}: {e.strerror or e}") from e
+
+    for conv in load_conventions():
+        if conv["kind"] != "folder" and conv["kind"] not in RESOURCE_KINDS:
+            continue
+        path = project_dir / conv["path"].rstrip("/")
+        try:
+            path.stat()
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError as e:
+            if e.errno == errno.ELOOP:
+                continue
+            fail(e)
+        if path.is_dir():
+            for _ in os.walk(path, onerror=fail):
+                pass
+
+
 def adopted_tool_config(project_dir: Path, pointers: list[str]) -> set[str]:
     """Pointer paths that are tool configuration: reachable from a tool-owned folder, through
     links to files or folders, by any path that is not a known instruction file (versions

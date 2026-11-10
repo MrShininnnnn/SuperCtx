@@ -12,6 +12,7 @@ import pytest
 
 from superctx import add as add_cmd, adopt, core, init as init_cmd, manifest, registry, shim, sync as sync_cmd
 from test_v2_migration_safety import snapshot
+from test_release_e2e import cli
 
 CLAUDE = "# Claude\n\nRun the tests before committing.\n"
 RULE = '---\npaths:\n  - "src/**/*.py"\n---\n\nUse type hints in Python files.\n'
@@ -255,7 +256,8 @@ def test_a_scan_error_while_comparing_with_the_backup_is_not_a_match(tmp_path, m
         return real_scandir(path)
 
     monkeypatch.setattr(os, "scandir", scandir)
-    # Isolate the backup comparison: the tool-folder scan would refuse the whole run first.
+    # Isolate the backup comparison: the tool-folder scans would refuse the whole run first.
+    monkeypatch.setattr(registry, "check_readable", lambda project_dir: None)
     monkeypatch.setattr(registry, "adopted_tool_config", lambda project_dir, pointers: set())
     result = sync_cmd.run(project)
     monkeypatch.undo()
@@ -1295,13 +1297,15 @@ needs_permissions = pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() =
                                        reason="root reads unreadable folders")
 
 
-def unreadable(project: Path, rel: str):
-    """Run the body with a folder that can be entered but not listed, then restore it."""
+def unreadable(project: Path, rel: str, mode: int = 0o300):
+    """Run the body with a folder's mode changed (by default: entered but not listed), then restore it."""
+    path = project / rel
+    original = stat.S_IMODE(path.stat().st_mode)
     class Ctx:
         def __enter__(self):
-            (project / rel).chmod(0o300)
+            path.chmod(mode)
         def __exit__(self, *exc):
-            (project / rel).chmod(0o755)
+            path.chmod(original)
     return Ctx()
 
 
@@ -1344,6 +1348,46 @@ def test_sync_changes_nothing_when_a_tool_folder_cannot_be_read(tmp_path, monkey
     assert code == 1 and "tool_folder_unreadable" in out and ".grok" in out
     assert snapshot(project) == before  # the missing pointer is not recreated
     assert sync_cmd.run(project)["unresolved"] == [{"path": "configs/grok.toml", "reason": "tool_config_adopted"}]
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+@pytest.mark.parametrize("given", ["configs/grok.toml", "notes/team.md"])
+def test_add_reports_an_unreadable_tool_folder_without_a_traceback(tmp_path, mode, given):
+    project = grok_links_to_configs(tmp_path)
+    write(project, "notes/team.md", "Prefer small diffs.\n")
+    before = snapshot(project)
+
+    with unreadable(project, ".grok", mode):
+        with pytest.raises(add_cmd.AddError, match="tool_folder_unreadable.*\\.grok"):
+            add_cmd.run(project, given)
+    assert snapshot(project) == before
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+def test_sync_reports_an_unreadable_tool_folder_without_a_traceback(tmp_path, mode):
+    project = grok_links_to_configs(tmp_path)
+    os.unlink(project / "CLAUDE.md")
+    before = snapshot(project)
+
+    with unreadable(project, ".grok", mode):
+        code, out = cli(project, "sync")
+    assert code == 1 and "tool_folder_unreadable" in out and ".grok" in out, out
+    assert snapshot(project) == before  # the missing pointer is not recreated
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+def test_first_sync_reports_an_unreadable_tool_folder_without_setting_up(tmp_path, mode):
+    project = happy_repo(tmp_path)
+    write(project, ".grok/skills/deploy/SKILL.md", SKILL_MD.replace("review", "deploy"))
+    before = snapshot(project)
+
+    with unreadable(project, ".grok", mode):
+        code, out = cli(project, "sync")
+    assert code == 1 and "tool_folder_unreadable" in out and ".grok" in out, out
+    assert snapshot(project) == before and not (project / ".ctx").exists()
 
 
 def test_guard_lets_adopted_tool_config_be_restored(tmp_path, monkeypatch):
