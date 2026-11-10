@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 from . import toml_compat
@@ -54,6 +55,25 @@ def symlinked_ctx_entries(project_dir: Path) -> list[str]:
         cdir / ".gitignore", manifest_path(project_dir), v2_manifest_path(project_dir), v1_backup_path(project_dir),
     ]
     return [p.relative_to(project_dir).as_posix() for p in entries if p.is_symlink()]
+
+
+def unreadable_ctx_entry(project_dir: Path) -> str | None:
+    """The first folder in .ctx/ that cannot be read, as "<path>: <reason>", or None.
+
+    Commands check this first: SuperCtx cannot verify or safely change its own files otherwise.
+    """
+    project_dir = Path(project_dir)
+    found: list[str] = []
+
+    def fail(e: OSError):
+        if not isinstance(e, FileNotFoundError) and not found:
+            where = os.path.relpath(e.filename, project_dir) if e.filename else CTX_DIRNAME
+            found.append(f"{Path(where).as_posix()}: {e.strerror or e}")
+
+    for _ in os.walk(ctx_dir(project_dir), onerror=fail):
+        if found:
+            break
+    return found[0] if found else None
 
 
 def symlinked_ctx_message(links: list[str]) -> str:

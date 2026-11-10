@@ -72,6 +72,18 @@ def _unreadable(e: Exception) -> dict:
 
 def run(project_dir: Path) -> dict:
     project_dir = Path(project_dir)
+    where = core.unreadable_ctx_entry(project_dir)
+    if where:
+        return {
+            "mode": "inspect",
+            "state": "managed_needs_repair",
+            "final_state": "needs_attention",
+            "mutated": False,
+            "message": (
+                f"ctx_unreadable: SuperCtx could not read {where}, so it cannot check its own "
+                "files and changed nothing. Make the folder readable and run sync again."
+            ),
+        }
     links = core.symlinked_ctx_entries(project_dir)
     if links:
         return {
