@@ -351,14 +351,17 @@ def detect_repo_state(project_dir: Path) -> dict:
             backup = core.sources_dir(project_dir) / rel
             backup_required = entry.get("backup_required", True)
 
-            if not live.is_file():
-                reasons.append("missing_shim")
-            elif not shim.is_generated_pointer_file(project_dir, rel, backup_required):
-                # Repair finishes an interrupted adoption or reports an edit; it
-                # never writes over content someone put there.
-                reasons.append("broken_shim")
-            elif not entry.get("published", True):
-                reasons.append("publication_pending")
+            try:
+                if not live.is_file():
+                    reasons.append("missing_shim")
+                elif not shim.is_generated_pointer_file(project_dir, rel, backup_required):
+                    # Repair finishes an interrupted adoption or reports an edit; it
+                    # never writes over content someone put there.
+                    reasons.append("broken_shim")
+                elif not entry.get("published", True):
+                    reasons.append("publication_pending")
+            except OSError:  # its folder cannot be read, so its health is unknown
+                reasons.append("tool_folder_unreadable")
 
             if backup_required and not backup.is_file():
                 reasons.append("missing_backup")
@@ -370,7 +373,11 @@ def detect_repo_state(project_dir: Path) -> dict:
             reasons.append("tool_folder_unreadable")
 
         for link in links:
-            link_state = adopt.link_state(project_dir, link["path"], link["canonical"], link["published"])
+            try:
+                link_state = adopt.link_state(project_dir, link["path"], link["canonical"], link["published"])
+            except OSError:  # its folder cannot be read, so its health is unknown
+                reasons.append("tool_folder_unreadable")
+                continue
             if link_state in ("missing", "pending"):
                 reasons.append("missing_link")
             elif link_state != "healthy":
@@ -378,14 +385,20 @@ def detect_repo_state(project_dir: Path) -> dict:
             elif not link["published"]:
                 reasons.append("publication_pending")
 
-        # Include candidate files in reasons/candidates list
-        discovery = registry.detect_all(project_dir)
+        # Include candidate files in reasons/candidates list. An unreadable folder leaves
+        # discovery incomplete, but must not hide the pointer and link findings above.
         untracked = []
-        for key in ["supported_folder_candidate", "legacy_or_uncertain_folder_candidate", "unverified_local_candidate", "verified_instruction_file"]:
-            for cand in discovery.get(key, []):
-                if cand["path"] not in tracked:
-                    untracked.append(cand["path"])
-        untracked += [c["path"] for c in adopt.plan(project_dir, explicit=True)[0] if c["path"] not in tracked]
+        try:
+            registry.check_readable(project_dir)
+        except registry.ScanError:
+            reasons.append("tool_folder_unreadable")
+        else:
+            discovery = registry.detect_all(project_dir)
+            for key in ["supported_folder_candidate", "legacy_or_uncertain_folder_candidate", "unverified_local_candidate", "verified_instruction_file"]:
+                for cand in discovery.get(key, []):
+                    if cand["path"] not in tracked:
+                        untracked.append(cand["path"])
+            untracked += [c["path"] for c in adopt.plan(project_dir, explicit=True)[0] if c["path"] not in tracked]
 
         if untracked:
             reasons.append("untracked_candidates_found")

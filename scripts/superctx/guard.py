@@ -87,7 +87,8 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
         for entry in manifest.get("files", []):
             tracked_paths.add(entry["path"].replace("\\", "/"))
         # Tool configuration an earlier version adopted must stay writable so it can be restored.
-        tracked_paths -= registry.adopted_tool_config(project_dir, sorted(tracked_paths))
+        # Unreadable folders are skipped, so they cannot lift protection from the other pointers.
+        tracked_paths -= registry.adopted_tool_config(project_dir, sorted(tracked_paths), partial=True)
     except Exception:
         pass
 
@@ -95,6 +96,10 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
         state = detect_repo_state(project_dir)
     except Exception:
         state = {"state": "not_candidate", "candidates": []}
+    # An unreadable folder says nothing about the pointers: when it is the only finding, keep
+    # steering their edits to the hub. Pointer and link findings still lead to repair.
+    if state.get("state") == "managed_needs_repair" and set(state.get("reasons", [])) == {"tool_folder_unreadable"}:
+        state = {**state, "state": "managed_healthy"}
 
     for p in target_paths:
         p_path = Path(p).resolve()

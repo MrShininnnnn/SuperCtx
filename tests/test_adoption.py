@@ -1435,6 +1435,109 @@ def test_guard_lets_adopted_tool_config_be_restored(tmp_path, monkeypatch):
     assert edit("CLAUDE.md")[0] == 2  # other pointers are still steered to the hub
 
 
+def guard_edit(project: Path, rel: str):
+    from superctx.guard import handle_pre_tool_use
+    return handle_pre_tool_use({"cwd": str(project), "tool_name": "Write",
+                                "tool_input": {"file_path": str(project / rel)}})
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+@pytest.mark.parametrize("folder", [".cursor", ".claude"])  # .claude also holds linked rules and skills
+def test_guard_still_steers_pointers_while_an_unrelated_folder_cannot_be_read(tmp_path, mode, folder):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, f"{folder}/notes/private.md", "Unrelated.\n")
+
+    with unreadable(project, folder, mode):
+        for rel in ("CLAUDE.md", "AGENTS.md"):
+            code, msg = guard_edit(project, rel)
+            assert code == 2 and ".ctx/SUPERCTX.md" in msg, (rel, msg)
+
+
+def _delete(p: Path) -> None:
+    p.unlink()
+
+
+def _edit_pointer(p: Path) -> None:
+    p.write_text(p.read_text(encoding="utf-8") + "Local note.\n", encoding="utf-8")
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+@pytest.mark.parametrize("damage, reason", [(_delete, "missing_shim"), (_edit_pointer, "broken_shim")])
+@pytest.mark.parametrize("folder", [".cursor", ".claude"])
+def test_pointer_health_survives_an_unreadable_unrelated_folder(tmp_path, mode, damage, reason, folder):
+    from superctx.status import detect_repo_state
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, f"{folder}/notes/private.md", "Unrelated.\n")
+    damage(project / "CLAUDE.md")
+    before = snapshot(project)
+
+    with unreadable(project, folder, mode):
+        state = detect_repo_state(project)
+        code, msg = guard_edit(project, "CLAUDE.md")
+    assert state["state"] == "managed_needs_repair"
+    assert {reason, "tool_folder_unreadable"} <= set(state["reasons"]), state
+    assert code == 2 and "need repair" in msg and "is a generated SuperCtx shim" not in msg, msg
+    assert snapshot(project) == before
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+@pytest.mark.parametrize("damage, reason", [(None, None), (_delete, "missing_shim"), (_edit_pointer, "broken_shim")])
+@pytest.mark.parametrize("inner", [".claude/CLAUDE.md", ".codex/AGENTS.md", ".github/copilot-instructions.md"])
+def test_root_pointer_stays_guarded_while_another_pointers_folder_cannot_be_read(tmp_path, mode, damage, reason, inner):
+    from superctx.status import detect_repo_state
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, inner, "Prefer small diffs.\n")
+    assert add_cmd.run(project, inner).status == "added"
+    if damage:
+        damage(project / "CLAUDE.md")
+    before = snapshot(project)
+
+    with unreadable(project, inner.split("/")[0], mode):
+        state = detect_repo_state(project)
+        code, msg = guard_edit(project, "CLAUDE.md")
+    assert "tool_folder_unreadable" in state["reasons"], state
+    if damage:
+        assert reason in state["reasons"], state
+        assert code == 2 and "need repair" in msg, msg
+    else:
+        assert not {"missing_shim", "broken_shim"} & set(state["reasons"]), state
+        assert code == 2 and "is a generated SuperCtx shim" in msg, msg
+    assert snapshot(project) == before
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+def test_guard_lets_adopted_tool_config_be_restored_while_a_folder_cannot_be_read(tmp_path, monkeypatch, mode):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".grok/config.toml", TOOL_CONFIG[".grok/config.toml"])
+    adopted_by_an_earlier_version(project, ".grok/config.toml", monkeypatch)
+    write(project, ".cursor/notes/private.md", "Unrelated.\n")
+
+    with unreadable(project, ".cursor", mode):
+        assert guard_edit(project, ".grok/config.toml") == (0, "")
+        assert guard_edit(project, "CLAUDE.md")[0] == 2
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+def test_guard_lets_tool_config_adopted_through_a_link_be_restored_while_a_folder_cannot_be_read(
+        tmp_path, monkeypatch, mode):
+    project = grok_links_to_configs(tmp_path)
+    adopted_by_an_earlier_version(project, "configs/grok.toml", monkeypatch)
+    write(project, ".cursor/notes/private.md", "Unrelated.\n")
+
+    with unreadable(project, ".cursor", mode):
+        assert guard_edit(project, "configs/grok.toml") == (0, "")
+        assert guard_edit(project, "CLAUDE.md")[0] == 2
+
+
 def test_cli_explains_how_to_recover_adopted_tool_config(tmp_path, monkeypatch, capsys):
     from superctx.__main__ import main
     project = happy_repo(tmp_path)
