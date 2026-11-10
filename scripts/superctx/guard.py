@@ -82,8 +82,10 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
         return 0, ""
 
     tracked_paths = set()
+    manifest_read = False
     try:
         manifest = core.load_manifest(project_dir)
+        manifest_read = True
         for entry in manifest.get("files", []):
             tracked_paths.add(entry["path"].replace("\\", "/"))
         # Tool configuration an earlier version adopted must stay writable so it can be restored.
@@ -92,10 +94,13 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
     except Exception:
         pass
 
+    unverified = None
     try:
         state = detect_repo_state(project_dir)
-    except Exception:
+    except Exception as e:
         state = {"state": "not_candidate", "candidates": []}
+        if manifest_read:
+            unverified = f"{type(e).__name__}: {e}"
     # An unreadable folder says nothing about the pointers: when it is the only finding, keep
     # steering their edits to the hub. Pointer and link findings still lead to repair.
     if state.get("state") == "managed_needs_repair" and set(state.get("reasons", [])) == {"tool_folder_unreadable"}:
@@ -120,6 +125,19 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
             return 2, msg
 
         if classification in ("ignored_hidden_path", "unknown_hidden_path", "normal_file", "known_agent_folder_file"):
+            continue
+
+        if unverified is not None:
+            # The manifest lists the pointers, but their state could not be checked: protect
+            # them without claiming they are healthy or broken, and leave other files alone.
+            if classification == "known_generated_shim":
+                msg = (
+                    f"Using SuperCtx, I could not verify the state of this repository ({unverified}).\n\n"
+                    f"`{rel_str}` is listed as a generated SuperCtx shim, and I cannot confirm whether it "
+                    f"is intact, so I will not edit it directly. Update `.ctx/SUPERCTX.md` instead, and "
+                    f"offer to inspect the setup (using `/superctx:sync`)."
+                )
+                return 2, msg
             continue
 
         repo_state = state.get("state", "not_candidate")

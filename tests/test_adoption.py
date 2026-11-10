@@ -1538,6 +1538,69 @@ def test_guard_lets_tool_config_adopted_through_a_link_be_restored_while_a_folde
         assert guard_edit(project, "CLAUDE.md")[0] == 2
 
 
+UNVERIFIED = "could not verify"
+
+
+def assert_unverified_block(result, rel):
+    code, msg = result
+    assert code == 2 and UNVERIFIED in msg and f"`{rel}`" in msg, msg
+    # Verification failed, so the message claims neither health nor damage.
+    assert "is a generated SuperCtx shim, so" not in msg and "need repair" not in msg, msg
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+@pytest.mark.parametrize("folder", [".ctx/sources", ".ctx/skills"])
+def test_an_unreadable_ctx_folder_keeps_pointers_guarded_and_changes_nothing(tmp_path, monkeypatch, mode, folder):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    write(project, ".grok/config.toml", TOOL_CONFIG[".grok/config.toml"])
+    adopted_by_an_earlier_version(project, ".grok/config.toml", monkeypatch)
+    write(project, "notes/team.md", "Prefer small diffs.\n")
+    before = snapshot(project)
+
+    with unreadable(project, folder, mode):
+        pointers = [guard_edit(project, rel) for rel in ("CLAUDE.md",)]
+        free = [guard_edit(project, rel) for rel in ("notes/team.md", ".ctx/SUPERCTX.md", ".grok/config.toml")]
+        sync_code, sync_out = cli(project, "sync")
+        detect_code, report = detect(project)
+        with pytest.raises(add_cmd.AddError, match=f"ctx_unreadable.*{folder}"):
+            add_cmd.run(project, "notes/team.md")
+    after = snapshot(project)
+
+    for code, msg in pointers:
+        assert code == 2, msg
+    if mode == 0o000:  # state detection cannot complete
+        assert_unverified_block(pointers[0], "CLAUDE.md")
+    assert free == [(0, "")] * 3  # the hub, unrelated files, and adopted configuration stay writable
+    assert sync_code == 1 and "ctx_unreadable" in sync_out and folder in sync_out, sync_out
+    assert detect_code == 1 and report["reasons"] == ["ctx_unreadable"] and folder in report["detail"], report
+    assert after == before
+
+
+def test_guard_blocks_pointers_when_state_detection_fails_unexpectedly(tmp_path, monkeypatch):
+    from superctx import guard
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    assert add_cmd.run(project, "AGENTS.md", create_if_missing=True).status == "added"
+    write(project, ".grok/config.toml", TOOL_CONFIG[".grok/config.toml"])
+    adopted_by_an_earlier_version(project, ".grok/config.toml", monkeypatch)
+    write(project, "notes/team.md", "Prefer small diffs.\n")
+    before = snapshot(project)
+
+    def crash(project_dir):
+        raise RuntimeError("unexpected detection failure")
+    monkeypatch.setattr(guard, "detect_repo_state", crash)
+
+    for rel in ("CLAUDE.md", "AGENTS.md"):
+        result = guard_edit(project, rel)
+        assert_unverified_block(result, rel)
+        assert "unexpected detection failure" in result[1]
+    for rel in ("notes/team.md", ".ctx/SUPERCTX.md", ".grok/config.toml", "GEMINI.md"):
+        assert guard_edit(project, rel) == (0, ""), rel
+    assert snapshot(project) == before
+
+
 def test_cli_explains_how_to_recover_adopted_tool_config(tmp_path, monkeypatch, capsys):
     from superctx.__main__ import main
     project = happy_repo(tmp_path)
