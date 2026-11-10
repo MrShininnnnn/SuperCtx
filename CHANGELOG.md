@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-11-10
+
 ### Fixed
 - The internal `_detect` entry point used by the session-start hook reports a tool, rule, skill, or planning folder it cannot read (for example `.grok` with mode `000`) as JSON with state `unreadable`, reason `tool_folder_unreadable`, and the folder, and exits 1, instead of printing a Python traceback or a partial result. It writes nothing; the session-start hook stays silent in this state, as before. (#101)
 - The edit guard keeps steering edits of a pointer such as `CLAUDE.md` to `.ctx/SUPERCTX.md` while an unrelated folder (for example `.cursor` with mode `000`) cannot be read. Before, it let the edit through, or asked to repair shims that were not broken. (#100)
