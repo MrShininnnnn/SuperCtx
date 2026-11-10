@@ -235,17 +235,18 @@ def check_readable(project_dir: Path) -> None:
                 pass
 
 
-def adopted_tool_config(project_dir: Path, pointers: list[str]) -> set[str]:
+def adopted_tool_config(project_dir: Path, pointers: list[str], partial: bool = False) -> set[str]:
     """Pointer paths that are tool configuration: reachable from a tool-owned folder, through
     links to files or folders, by any path that is not a known instruction file (versions
-    before 0.2.2 adopted these with `add`). Raises ScanError if a folder cannot be read."""
+    before 0.2.2 adopted these with `add`). Raises ScanError if a folder cannot be read,
+    unless `partial`: then unreadable folders are skipped and the result may be incomplete."""
     project_dir = Path(project_dir).resolve()
     found = {rel for rel in pointers if in_tool_folder(rel)}
     rest = set(pointers) - found
     known = {c["path"] for c in instruction_conventions()}
 
     def fail(e: OSError):
-        if isinstance(e, FileNotFoundError):  # removed while scanning
+        if partial or isinstance(e, FileNotFoundError):  # skipped, or removed while scanning
             return
         where = os.path.relpath(e.filename, project_dir) if e.filename else "a tool folder"
         raise ScanError(f"{Path(where).as_posix()}: {e.strerror or e}") from e
