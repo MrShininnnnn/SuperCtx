@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -1388,6 +1390,34 @@ def test_first_sync_reports_an_unreadable_tool_folder_without_setting_up(tmp_pat
         code, out = cli(project, "sync")
     assert code == 1 and "tool_folder_unreadable" in out and ".grok" in out, out
     assert snapshot(project) == before and not (project / ".ctx").exists()
+
+
+def detect(project: Path) -> tuple[int, dict]:
+    """Run the internal detection entry point the way the session-start hook does."""
+    env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "scripts"))
+    out = subprocess.run([sys.executable, "-m", "superctx._detect", str(project)], cwd=project, env=env,
+                         capture_output=True, text=True)
+    assert "Traceback" not in out.stderr, out.stderr
+    return out.returncode, json.loads(out.stdout)
+
+
+@needs_permissions
+@pytest.mark.parametrize("mode", [0o000, 0o300])
+@pytest.mark.parametrize("managed", [True, False])
+def test_detect_reports_an_unreadable_tool_folder_without_a_traceback(tmp_path, mode, managed):
+    if managed:
+        project = grok_links_to_configs(tmp_path)
+    else:
+        project = happy_repo(tmp_path)
+        write(project, ".grok/skills/deploy/SKILL.md", SKILL_MD.replace("review", "deploy"))
+    before = snapshot(project)
+
+    with unreadable(project, ".grok", mode):
+        code, report = detect(project)
+    assert code == 1
+    assert report["state"] == "unreadable" and report["reasons"] == ["tool_folder_unreadable"]
+    assert ".grok" in report["detail"] and report["recommended_action_mutates_files"] is False
+    assert snapshot(project) == before and (project / ".ctx").exists() == managed
 
 
 def test_guard_lets_adopted_tool_config_be_restored(tmp_path, monkeypatch):
