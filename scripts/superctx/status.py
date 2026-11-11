@@ -366,8 +366,10 @@ def detect_repo_state(project_dir: Path) -> dict:
             if backup_required and not backup.is_file():
                 reasons.append("missing_backup")
 
+        adopted: set[str] = set()
         try:
-            if registry.adopted_tool_config(project_dir, [entry["path"] for entry in files]):
+            adopted = registry.adopted_tool_config(project_dir, [entry["path"] for entry in files])
+            if adopted:
                 reasons.append("tool_config_adopted")
         except registry.ScanError:
             reasons.append("tool_folder_unreadable")
@@ -412,13 +414,16 @@ def detect_repo_state(project_dir: Path) -> dict:
             state = "managed_healthy"
             rec_action = "none"
 
-        return {
+        result = {
             "state": state,
             "candidates": sorted(untracked),
             "reasons": sorted(list(set(reasons))),
             "recommended_action": rec_action,
             "recommended_action_mutates_files": (rec_action != "none")
         }
+        if adopted:  # named so the session-start hook can list them
+            result["adopted_tool_config"] = sorted(adopted)
+        return result
 
     # 2. Unmanaged Repo: `.ctx/` does not exist
     else:

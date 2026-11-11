@@ -38,9 +38,28 @@ EOF
     fi
   elif [[ "$state" == "managed_needs_repair" ]]; then
     if [[ "$action" == "repair" ]]; then
-      cat <<'EOF'
+      # Tool configuration an earlier version replaced with a pointer is not shim damage,
+      # and sync does not restore it: name it and give the manual recovery steps.
+      adopted_list=$(printf '%s' "$state_json" | python3 -c '
+import json, sys
+print("\n".join("- " + p for p in json.load(sys.stdin).get("adopted_tool_config", [])))
+' 2>/dev/null || true)
+      other_findings=$(printf '%s' "$state_json" | python3 -c '
+import json, sys
+reasons = set(json.load(sys.stdin).get("reasons", []))
+print("yes" if reasons - {"tool_config_adopted", "untracked_candidates_found"} else "no")
+' 2>/dev/null || true)
+      recovery='for each path, copy the original back from `.ctx/sources/<path>`, delete its `[[natives]]` entry from `.ctx/superctx.toml`, and delete its `## From: <path>` section from `.ctx/SUPERCTX.md`'
+      if [[ -n "$adopted_list" && "$other_findings" == "no" ]]; then
+        printf 'SuperCtx is active. `.ctx/SUPERCTX.md` is the canonical shared project context, and the registered instruction files are intact. An earlier SuperCtx version replaced this tool configuration with a pointer:\n%s\n\nSuperCtx does not restore it automatically. Tell the user, and offer to walk through the recovery: %s. Change nothing without explicit consent.\n' "$adopted_list" "$recovery"
+      else
+        cat <<'EOF'
 SuperCtx is active, but the installation has broken or missing shims. Inspect the setup and offer to repair the shims. Once the user gives consent, run the repair internally (using `/superctx:sync`).
 EOF
+        if [[ -n "$adopted_list" ]]; then
+          printf '\nSeparately, an earlier SuperCtx version replaced this tool configuration with a pointer:\n%s\n\nThe repair will not restore it. Offer to walk through the recovery: %s. Change nothing without explicit consent.\n' "$adopted_list" "$recovery"
+        fi
+      fi
     elif [[ "$action" == "migrate" ]]; then
       cat <<'EOF'
 SuperCtx is present, but an upgrade of its manifest to `.ctx/superctx.toml` was interrupted. Offer to resume it. Once the user gives consent, run it internally (using `/superctx:sync`).

@@ -1563,6 +1563,54 @@ def test_guard_does_not_call_intact_pointers_broken_when_only_tool_config_was_ad
     assert code == 2 and "need repair" in msg, msg
 
 
+def session_start(project: Path) -> str:
+    """Run the real session-start hook script and return what it tells the session."""
+    root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(root),
+               PATH=str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", ""))
+    out = subprocess.run(["bash", str(root / "hooks" / "session-start")], cwd=project, env=env,
+                         capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    return out.stdout
+
+
+BROKEN_SHIMS = "broken or missing shims"
+
+
+def test_session_start_names_adopted_tool_config_without_calling_shims_broken(tmp_path, monkeypatch):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    for rel in (".grok/config.toml", ".claude/settings.json"):
+        write(project, rel, TOOL_CONFIG[rel])
+        adopted_by_an_earlier_version(project, rel, monkeypatch)
+    before = snapshot(project)
+
+    # Only finding: the pointers are intact and sync cannot repair this, so no repair is offered.
+    out = session_start(project)
+    assert "- .grok/config.toml" in out and "- .claude/settings.json" in out, out
+    assert ".ctx/sources/<path>" in out and "[[natives]]" in out and "## From: <path>" in out, out
+    assert BROKEN_SHIMS not in out and "repair" not in out.lower(), out
+    assert "not restore" in out and "explicit consent" in out, out
+    assert snapshot(project) == before
+
+    # Alongside real pointer damage: the repair offer covers the shims, and the adopted
+    # configuration is still named as something the repair will not restore.
+    (project / "CLAUDE.md").unlink()
+    out = session_start(project)
+    assert BROKEN_SHIMS in out and "/superctx:sync" in out, out
+    assert "- .grok/config.toml" in out and "- .claude/settings.json" in out, out
+    assert "repair will not restore" in out and ".ctx/sources/<path>" in out, out
+
+
+def test_session_start_still_reports_pointer_damage_alone(tmp_path):
+    project = happy_repo(tmp_path)
+    sync_cmd.run(project)
+    (project / "CLAUDE.md").unlink()
+
+    out = session_start(project)
+    assert BROKEN_SHIMS in out and "tool configuration" not in out, out
+
+
 UNVERIFIED = "could not verify"
 
 
