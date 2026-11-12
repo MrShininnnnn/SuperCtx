@@ -52,7 +52,7 @@ def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = Tru
     rel_path_to_hub = _hub_ref(rel_path)
     rel_path_to_backup = os.path.relpath(f".ctx/sources/{rel_path}", parent_dir).replace("\\", "/")
     backup_note = (
-        "Original pre-SuperCtx content backed up at:\n"
+        "Expected original backup location (if available):\n"
         f"{rel_path_to_backup}"
     )
     if not backup_required:
@@ -69,7 +69,7 @@ def generate_shim(rel_path: str, import_syntax: str, backup_required: bool = Tru
             f"<!-- {backup_note}\n-->\n"
         )
     else:
-        backup_line = f"Original pre-SuperCtx content is backed up at `{rel_path_to_backup}`."
+        backup_line = f"Expected original backup location (if available): `{rel_path_to_backup}`."
         if not backup_required:
             backup_line = "Created by SuperCtx; no original content existed to back up."
         return (
@@ -86,10 +86,24 @@ def _import_syntax(rel_path: str) -> str:
 
 
 def generated_pointers(rel_path: str, backup_required: bool = True) -> list[str]:
-    """Every rendering SuperCtx has published at rel_path: the current one first, then
-    the v0.1.2-v0.1.4 form, which lacks the edit-policy line."""
+    """Exact published renderings, current first; preserve historical backup wording.
+
+    Index 1 is the v0.1.2-v0.1.4 form without the edit-policy line. Recognition
+    must not derive that form from the new backup claim alone or old pointers
+    would become indistinguishable from user edits during a wording refresh.
+    """
     current = generate_shim(rel_path, _import_syntax(rel_path), backup_required=backup_required)
-    return [current, current.replace(f"{_redirect_line(rel_path)}\n\n", "", 1)]
+    previous = current
+    if backup_required:
+        previous = previous.replace(
+            "Expected original backup location (if available):\n",
+            "Original pre-SuperCtx content backed up at:\n",
+        ).replace(
+            "Expected original backup location (if available): `",
+            "Original pre-SuperCtx content is backed up at `",
+        )
+    legacy = previous.replace(f"{_redirect_line(rel_path)}\n\n", "", 1)
+    return list(dict.fromkeys([current, legacy, previous]))
 
 
 def is_generated_pointer(content: str, rel_path: str, backup_required: bool = True) -> bool:

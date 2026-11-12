@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Generated instruction shims now describe the expected original backup location (if available), without claiming the backup exists. Exact historical pointer formats remain recognized and refresh safely; user edits, backup flags, and missing-backup diagnostics are preserved.
+
 ## [0.2.5] - 2026-11-10
 
 ### Fixed
