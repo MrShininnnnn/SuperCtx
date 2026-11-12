@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-10
+
 ### Fixed
 - The edit guard no longer says the generated shims are broken or missing when the only finding is tool configuration that an earlier version replaced with a pointer (`tool_config_adopted`). Sync cannot repair that, and the pointers are intact, so an edit of a pointer such as `CLAUDE.md` is steered to `.ctx/SUPERCTX.md` as usual. A missing or edited pointer still gets the repair message, and the replaced configuration stays writable so it can be restored. (#104)
 - The session-start hook no longer reports broken or missing shims, or offers a repair, when the only finding is tool configuration that an earlier version replaced with a pointer. It names each replaced path, says SuperCtx does not restore it automatically, and gives the recovery steps to offer. When shims really are broken as well, it keeps the repair offer and adds the replaced paths, noting that the repair will not restore them. (#105)

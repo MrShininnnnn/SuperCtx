@@ -9,7 +9,7 @@
       "name": "superctx",
       "source": "./",
       "description": "All the context, in one place for Claude Code, Codex, Gemini, and AI coding tools.",
-      "version": "0.2.4",
+      "version": "0.2.5",
       "author": {
         "name": "ShiningLab"
       },
