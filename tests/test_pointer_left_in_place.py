@@ -207,3 +207,40 @@ def test_the_guard_names_the_alias_when_the_project_is_reached_through_a_link(tm
                                      "tool_input": {"file_path": str(via / ALIAS)}})
 
     assert code == 2 and f"`{ALIAS}`" in msg and reason in msg, msg
+
+
+STEER = "is a generated SuperCtx shim, so I will update `.ctx/SUPERCTX.md` instead"
+REPAIR = "generated shims are broken or missing and need repair"
+
+
+@pytest.mark.parametrize("damaged", [False, True], ids=["intact", "damaged"])
+def test_an_alias_to_a_tracked_pointer_keeps_tracked_handling_and_is_explained(tmp_path, capsys, damaged):
+    project = tmp_path / "repo"
+    write(project, "CLAUDE.md", "# P\n\nUse tabs.\n")
+    assert sync_cmd.run(project)["final_state"] == "healthy"
+    os.symlink("CLAUDE.md", project / ALIAS)
+    if damaged:
+        with open(project / "CLAUDE.md", "a", encoding="utf-8") as fh:
+            fh.write("Local note.\n")
+    before = snapshot(project)
+
+    # The tracked pointer itself: the normal redirect, or the repair message when damaged.
+    code, msg = guard_edit(project, "CLAUDE.md")
+    assert code == 2 and (REPAIR if damaged else STEER) in msg, msg
+    assert "left it in place" not in msg, msg
+
+    # The alias: explained as a link to a tracked pointer, never offered or called unknown.
+    code, msg = guard_edit(project, ALIAS)
+    assert code == 2 and f"`{ALIAS}`" in msg and "links_to_tracked_pointer" in msg and "`CLAUDE.md`" in msg, msg
+    assert "cannot tell what" not in msg and not any(o in msg for o in OFFERS), msg
+
+    hook = session_start(project)
+    assert f"- {ALIAS} (links_to_tracked_pointer)" in hook and "unconnected instruction files" not in hook, hook
+
+    if not damaged:  # a damaged pointer leads sync to repair mode, which writes; covered elsewhere
+        code, out = run_cli(capsys, project)
+        assert code == 0 and f"- {ALIAS} (instructions): links_to_tracked_pointer" in out, out
+        assert "Untracked candidates" not in out and not any(o in out for o in OFFERS), out
+
+    assert snapshot(project) == before
+    assert os.readlink(project / ALIAS) == "CLAUDE.md"

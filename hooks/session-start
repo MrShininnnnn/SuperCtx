@@ -92,6 +92,6 @@ left = json.load(sys.stdin).get("left_in_place", [])
 print("\n".join("- {} ({})".format(i["path"], i["reason"]) for i in left))
 ' 2>/dev/null || true)
   if [[ -n "$left_list" ]]; then
-    printf '\nSuperCtx left these files in place because they hold SuperCtx pointer text, so it cannot tell what they held before or whether a backup of that exists:\n%s\n\nDo not offer to connect them or to set SuperCtx up for them. If the user asks, explain why, and change nothing without explicit consent.\n' "$left_list"
+    printf '\nSuperCtx left these files in place and will not adopt them:\n%s\n\n`already_a_pointer` and `pointer_with_changes` mean the file holds SuperCtx pointer text, so SuperCtx cannot tell what it held before or whether a backup of that exists. `links_to_tracked_pointer` means the file links to a pointer SuperCtx already tracks, so it already reads the shared context. Do not offer to connect them or to set SuperCtx up for them. If the user asks, explain why, and change nothing without explicit consent.\n' "$left_list"
   fi
 fi

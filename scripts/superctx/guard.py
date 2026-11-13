@@ -108,12 +108,13 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
     if state.get("state") == "managed_needs_repair" and findings and findings <= {"tool_folder_unreadable", "tool_config_adopted"}:
         state = {**state, "state": "managed_healthy"}
 
-    # Files holding pointer text, by their own path and, for an alias, by its target too.
+    # Files left in place, by their own path and, for an alias, by its target too. A tracked
+    # pointer keeps its own handling even when an untracked alias points to it.
     left_in_place = {}
     for item in state.get("left_in_place", []):
         for key in (item["path"], item.get("target")):
-            if key:
-                left_in_place[key] = item["reason"]
+            if key and key not in tracked_paths:
+                left_in_place[key] = item
 
     for p in target_paths:
         p_path = Path(p).resolve()
@@ -139,13 +140,23 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
 
         shown = given_rel if given_rel in left_in_place else rel_str
         if shown in left_in_place:
-            msg = (
-                f"Using SuperCtx, I found that `{shown}` holds SuperCtx pointer text "
-                f"({left_in_place[shown]}), so SuperCtx cannot tell what it held before or whether a "
-                f"backup of that exists, and left it in place.\n\n"
-                f"I will not edit it or connect it to the shared context hub. I will tell the user and "
-                f"change nothing without their explicit consent."
-            )
+            item = left_in_place[shown]
+            if item["reason"] == "links_to_tracked_pointer":
+                msg = (
+                    f"Using SuperCtx, I found that `{shown}` is a link to `{item['target']}`, a pointer "
+                    f"SuperCtx already tracks (links_to_tracked_pointer), so it already reads the shared "
+                    f"context through that pointer and SuperCtx left it in place.\n\n"
+                    f"I will not edit it or connect it. To change shared project context, I will update "
+                    f"`.ctx/SUPERCTX.md` instead."
+                )
+            else:
+                msg = (
+                    f"Using SuperCtx, I found that `{shown}` holds SuperCtx pointer text "
+                    f"({item['reason']}), so SuperCtx cannot tell what it held before or whether a "
+                    f"backup of that exists, and left it in place.\n\n"
+                    f"I will not edit it or connect it to the shared context hub. I will tell the user and "
+                    f"change nothing without their explicit consent."
+                )
             return 2, msg
 
         if classification in ("ignored_hidden_path", "unknown_hidden_path", "normal_file", "known_agent_folder_file"):

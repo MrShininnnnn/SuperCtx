@@ -224,7 +224,7 @@ def run(project_dir: Path) -> list[dict]:
     return results
 
 
-def _split_pointer_text(project_dir: Path, paths: list[str]) -> tuple[list[str], list[dict]]:
+def _split_pointer_text(project_dir: Path, paths: list[str], tracked=frozenset()) -> tuple[list[str], list[dict]]:
     """Separate files holding SuperCtx pointer text from real candidates.
 
     Such a file cannot be adopted (sync and add refuse it), so it is reported as left in
@@ -232,6 +232,13 @@ def _split_pointer_text(project_dir: Path, paths: list[str]) -> tuple[list[str],
     """
     candidates, left = [], []
     for rel in paths:
+        target = shim.repo_file_target(project_dir, rel)
+        if target != rel and target in tracked:
+            # A link to a pointer SuperCtx already tracks: it reads the hub through that
+            # pointer, whatever state the pointer is in, so there is nothing to adopt.
+            left.append({"path": rel, "type": "instructions", "reason": "links_to_tracked_pointer",
+                         "target": target})
+            continue
         found = shim.pointer_text_file(project_dir, rel)
         if found is None:
             candidates.append(rel)
@@ -421,7 +428,7 @@ def detect_repo_state(project_dir: Path) -> dict:
                     if cand["path"] not in tracked:
                         untracked.append(cand["path"])
             untracked += [c["path"] for c in adopt.plan(project_dir, explicit=True)[0] if c["path"] not in tracked]
-            untracked, left_in_place = _split_pointer_text(project_dir, untracked)
+            untracked, left_in_place = _split_pointer_text(project_dir, untracked, tracked)
 
         if untracked:
             reasons.append("untracked_candidates_found")
