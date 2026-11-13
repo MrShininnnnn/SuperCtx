@@ -125,11 +125,13 @@ def pointer_text_reason(content: str, rel_path: str) -> str | None:
 
     Pointer text says nothing about what the file held before or whether a backup of
     that exists, so it is never treated as original content: an exact generated pointer
-    is "already_a_pointer", and pointer text with changes is "pointer_with_changes".
+    is "already_a_pointer", and anything else carrying the generated marker is
+    "pointer_with_changes". The marker alone decides, unlike is_shim(), so a pointer cut
+    off before its hub reference is still caught.
     """
     if is_any_generated_pointer(content, rel_path):
         return "already_a_pointer"
-    if is_shim(content):
+    if WARNING_MARKER in content.replace("\r\n", "\n"):
         return "pointer_with_changes"
     return None
 

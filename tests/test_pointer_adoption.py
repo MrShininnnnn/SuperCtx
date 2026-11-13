@@ -18,6 +18,8 @@ NO_ORIGINAL = shim.generate_shim(REL, "plain-pointer", backup_required=False)
 V01 = shim.generated_pointers(REL)[1]  # v0.1.x form, without the edit-policy line
 TRUNCATED = CURRENT.split("Expected original backup")[0].rstrip() + "\n"
 EDITED = CURRENT + "Also: prefer tabs.\n"
+HEADER_ONLY = f"# SuperCtx\n{shim.WARNING_MARKER}\n"  # cut off before the hub reference
+MARKER_ONLY = f"{shim.WARNING_MARKER}\n"
 
 POINTERS = {
     "current": (CURRENT, "already_a_pointer"),
@@ -25,6 +27,9 @@ POINTERS = {
     "v0_1": (V01, "already_a_pointer"),
     "edited": (EDITED, "pointer_with_changes"),
     "truncated": (TRUNCATED, "pointer_with_changes"),
+    "header_only": (HEADER_ONLY, "pointer_with_changes"),
+    "marker_only": (MARKER_ONLY, "pointer_with_changes"),
+    "header_only_crlf": (HEADER_ONLY.replace("\n", "\r\n"), "pointer_with_changes"),
 }
 REAL = "# AGENTS.md\n\nUse spaces.\n"
 
