@@ -73,7 +73,7 @@ EOF
     cat <<'EOF'
 SuperCtx is present, but some instruction files are legacy and not yet fully migrated. Explain this situation to the user, preserve existing instruction contents, and offer to migrate the legacy setup after obtaining explicit consent.
 EOF
-  elif [[ "$state" == "candidate_repo" ]]; then
+  elif [[ "$state" == "candidate_repo" && -n "${candidates_csv:-}" ]]; then
     # Format candidate file list for the agent
     candidate_list=$(printf '%s' "$candidates_csv" | python3 -c '
 import sys
@@ -81,5 +81,17 @@ paths = sys.stdin.read().strip().split(",")
 print("\n".join("- " + p for p in paths if p))
 ' 2>/dev/null || true)
     printf 'SuperCtx setup opportunity: This repository has agent instruction files but no shared context hub.\n\nDetected files:\n%s\n\nOffer to set up one shared context hub. Explain that this will:\n- create `.ctx/SUPERCTX.md` as the canonical project context\n- back up the originals under `.ctx/sources/`\n- replace the live instruction files with generated shims pointing to the hub\n\nAsk for explicit consent before doing anything. After the user confirms, perform setup internally (using `/superctx:sync`) without asking them to type a command.\n' "$candidate_list"
+  elif [[ "$state" == "candidate_repo" ]]; then
+    echo "SuperCtx is not set up in this repository, and none of its instruction files can be adopted."
+  fi
+
+  # Files holding SuperCtx pointer text cannot be adopted: explain them, never offer them.
+  left_list=$(printf '%s' "$state_json" | python3 -c '
+import json, sys
+left = json.load(sys.stdin).get("left_in_place", [])
+print("\n".join("- {} ({})".format(i["path"], i["reason"]) for i in left))
+' 2>/dev/null || true)
+  if [[ -n "$left_list" ]]; then
+    printf '\nSuperCtx left these files in place and will not adopt them:\n%s\n\n`already_a_pointer` and `pointer_with_changes` mean the file holds SuperCtx pointer text, so SuperCtx cannot tell what it held before or whether a backup of that exists. `links_to_tracked_pointer` means the file links to a pointer SuperCtx already tracks, so it already reads the shared context. Do not offer to connect them or to set SuperCtx up for them. If the user asks, explain why, and change nothing without explicit consent.\n' "$left_list"
   fi
 fi

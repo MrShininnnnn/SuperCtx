@@ -224,6 +224,32 @@ def run(project_dir: Path) -> list[dict]:
     return results
 
 
+def _split_pointer_text(project_dir: Path, paths: list[str], tracked=frozenset()) -> tuple[list[str], list[dict]]:
+    """Separate files holding SuperCtx pointer text from real candidates.
+
+    Such a file cannot be adopted (sync and add refuse it), so it is reported as left in
+    place with its reason instead of being offered for connection. Read-only.
+    """
+    candidates, left = [], []
+    for rel in paths:
+        target = shim.repo_file_target(project_dir, rel)
+        if target != rel and target in tracked:
+            # A link to a pointer SuperCtx already tracks: it reads the hub through that
+            # pointer, whatever state the pointer is in, so there is nothing to adopt.
+            left.append({"path": rel, "type": "instructions", "reason": "links_to_tracked_pointer",
+                         "target": target})
+            continue
+        found = shim.pointer_text_file(project_dir, rel)
+        if found is None:
+            candidates.append(rel)
+            continue
+        item = {"path": rel, "type": "instructions", "reason": found[0]}
+        if found[1] != rel:  # an alias: edits through either path land in the same file
+            item["target"] = found[1]
+        left.append(item)
+    return candidates, left
+
+
 def detect_repo_state(project_dir: Path) -> dict:
     project_dir = Path(project_dir)
     ctx_dir = core.ctx_dir(project_dir)
@@ -389,6 +415,7 @@ def detect_repo_state(project_dir: Path) -> dict:
 
         # Include candidate files in reasons/candidates list. An unreadable folder leaves
         # discovery incomplete, but must not hide the pointer and link findings above.
+        left_in_place = []
         untracked = []
         try:
             registry.check_readable(project_dir)
@@ -401,6 +428,7 @@ def detect_repo_state(project_dir: Path) -> dict:
                     if cand["path"] not in tracked:
                         untracked.append(cand["path"])
             untracked += [c["path"] for c in adopt.plan(project_dir, explicit=True)[0] if c["path"] not in tracked]
+            untracked, left_in_place = _split_pointer_text(project_dir, untracked, tracked)
 
         if untracked:
             reasons.append("untracked_candidates_found")
@@ -423,19 +451,34 @@ def detect_repo_state(project_dir: Path) -> dict:
         }
         if adopted:  # named so the session-start hook can list them
             result["adopted_tool_config"] = sorted(adopted)
+        if left_in_place:  # pointer text: never offered for connection
+            result["left_in_place"] = left_in_place
         return result
 
     # 2. Unmanaged Repo: `.ctx/` does not exist
     else:
         detected = registry.detect(project_dir) + adopt.plan(project_dir)[0]
-        if detected:
-            candidates = sorted([c["path"] for c in detected])
-            return {
+        candidates, left_in_place = _split_pointer_text(project_dir, sorted(c["path"] for c in detected))
+        if candidates:
+            result = {
                 "state": "candidate_repo",
                 "candidates": candidates,
                 "reasons": ["known_instruction_files_found"],
                 "recommended_action": "setup",
                 "recommended_action_mutates_files": True
+            }
+            if left_in_place:
+                result["left_in_place"] = left_in_place
+            return result
+        if left_in_place:
+            # Only pointer text: nothing can be set up, so report it rather than offer setup.
+            return {
+                "state": "candidate_repo",
+                "candidates": [],
+                "reasons": ["pointer_text_only"],
+                "left_in_place": left_in_place,
+                "recommended_action": "inspect",
+                "recommended_action_mutates_files": False
             }
         else:
             return {

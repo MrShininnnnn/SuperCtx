@@ -34,7 +34,11 @@ REASONS = {
         "it holds SuperCtx pointer text with changes, so SuperCtx cannot tell which parts are original; "
         "it changed nothing"
     ),
-    "canonical_missing":"its canonical copy in .ctx/ is missing; restore it from version control or .ctx/sources/",
+    "links_to_tracked_pointer": (
+        "it is a link to a pointer SuperCtx already tracks, so it already reads the shared context "
+        "through that pointer; it changed nothing"
+    ),
+    "canonical_missing": "its canonical copy in .ctx/ is missing; restore it from version control or .ctx/sources/",
     "not_verified": "SuperCtx has not verified this tool's behavior through a link",
     "already_a_symlink": "it is already a symlink you manage",
     "contains_symlink": "it contains symlinks, which could break after moving it",
