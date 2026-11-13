@@ -156,14 +156,17 @@ def _run(project_dir: Path) -> dict:
 
     elif state == "candidate_repo":
         init_res = init_cmd.run(project_dir)
-        final_state = "needs_attention" if init_res.get("partial_shim_failure") else "healthy"
+        created = init_res["created"]
+        final_state = "needs_attention" if init_res.get("partial_shim_failure") or not created else "healthy"
         return {
             "mode": "init",
             "state": "candidate_repo",
             "final_state": final_state,
-            "mutated": True,
+            "mutated": created,
             "init_result": init_res,
-            "message": "SuperCtx initialized this repo with some shim failures." if final_state == "needs_attention" else "SuperCtx initialized this repo successfully."
+            "message": ("SuperCtx did not set up this repo." if not created
+                        else "SuperCtx initialized this repo with some shim failures." if final_state == "needs_attention"
+                        else "SuperCtx initialized this repo successfully.")
         }
 
     elif state == "managed_legacy":

@@ -1764,13 +1764,15 @@ def test_add_refuses_a_skill_whose_canonical_path_is_taken(tmp_path):
     assert snapshot(project) == before
 
 
-def test_add_backs_up_an_untracked_pointer_with_extra_lines_instead_of_overwriting(tmp_path):
+def test_add_refuses_an_untracked_pointer_with_extra_lines_instead_of_overwriting(tmp_path):
     project = happy_repo(tmp_path)
     sync_cmd.run(project)
     edited = shim.generated_pointers("GEMINI.md")[0] + "Gemini-only note.\n"
     write(project, "GEMINI.md", edited)
+    before = snapshot(project)
 
-    add_cmd.run(project, "GEMINI.md")
+    with pytest.raises(add_cmd.AddError, match="pointer_with_changes"):
+        add_cmd.run(project, "GEMINI.md")
 
-    assert (core.sources_dir(project) / "GEMINI.md").read_text(encoding="utf-8") == edited
-    assert "Gemini-only note." in core.hub_path(project).read_text(encoding="utf-8")
+    # The user's line survives because nothing is written, not because it is guessed to be original.
+    assert snapshot(project) == before
