@@ -142,7 +142,20 @@ def handle_pre_tool_use(data: dict) -> tuple[int, str]:
                 return 2, msg
             continue
 
+        left_in_place = {item["path"]: item["reason"] for item in state.get("left_in_place", [])}
+        if rel_str in left_in_place:
+            msg = (
+                f"Using SuperCtx, I found that `{rel_str}` holds SuperCtx pointer text "
+                f"({left_in_place[rel_str]}), so SuperCtx cannot tell what it held before or whether a "
+                f"backup of that exists, and left it in place.\n\n"
+                f"I will not edit it or connect it to the shared context hub. I will tell the user and "
+                f"change nothing without their explicit consent."
+            )
+            return 2, msg
+
         repo_state = state.get("state", "not_candidate")
+        if repo_state == "candidate_repo" and not state.get("candidates"):
+            repo_state = "not_candidate"  # only pointer text was found; nothing can be set up for it
 
         if repo_state == "candidate_repo":
             if classification == "known_instruction_file":

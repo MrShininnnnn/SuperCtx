@@ -109,8 +109,9 @@ def run(project_dir: Path) -> dict:
         }
     result = _run(project_dir)
     if result["mode"] in ("healthy", "repair"):
-        # Report standing reasons for rules and skills that stay where they are.
-        result["left_in_place"] = adopt.plan(project_dir, manifest_mod.load_v2(project_dir))[1]
+        # Report standing reasons for files, rules and skills that stay where they are.
+        result["left_in_place"] = (result.pop("instructions_left_in_place", [])
+                                   + adopt.plan(project_dir, manifest_mod.load_v2(project_dir))[1])
     if migrated:
         result["migrated"] = True
         result["mutated"] = True
@@ -215,6 +216,7 @@ def _run(project_dir: Path) -> dict:
             "mutated": converged,
             "healthy": healthy_shims,
             "candidates": sorted(candidates),
+            "instructions_left_in_place": state_info.get("left_in_place", []),
             "message": "All SuperCtx context links are healthy."
         }
 
@@ -289,6 +291,7 @@ def _run(project_dir: Path) -> dict:
             "repaired": repaired,
             "unresolved": unresolved,
             "warnings": warnings,
+            "instructions_left_in_place": state_info.get("left_in_place", []),
             "message": msg
         }
 
