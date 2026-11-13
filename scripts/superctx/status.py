@@ -232,17 +232,14 @@ def _split_pointer_text(project_dir: Path, paths: list[str]) -> tuple[list[str],
     """
     candidates, left = [], []
     for rel in paths:
-        path = Path(project_dir) / rel
-        reason = None
-        if path.is_file() and not path.is_symlink():
-            try:
-                reason = shim.pointer_text_reason(path.read_text(encoding="utf-8"), rel)
-            except (OSError, UnicodeDecodeError):
-                reason = None
-        if reason:
-            left.append({"path": rel, "type": "instructions", "reason": reason})
-        else:
+        found = shim.pointer_text_file(project_dir, rel)
+        if found is None:
             candidates.append(rel)
+            continue
+        item = {"path": rel, "type": "instructions", "reason": found[0]}
+        if found[1] != rel:  # an alias: edits through either path land in the same file
+            item["target"] = found[1]
+        left.append(item)
     return candidates, left
 
 

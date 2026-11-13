@@ -75,12 +75,12 @@ def run(project_dir: Path) -> dict:
     left_in_place = []
     pointers = []
     for c in discovery["verified_instruction_file"]:
-        if not shim._is_safe_target(project_dir, c["path"]):
+        # Pointer text first, so an alias to it is reported for its content like everywhere else.
+        found = shim.pointer_text_file(project_dir, c["path"])
+        if found:
+            left_in_place.append({"path": c["path"], "type": "instructions", "reason": found[0]})
+        elif not shim._is_safe_target(project_dir, c["path"]):
             left_in_place.append({"path": c["path"], "type": "instructions", "reason": "unsafe_path"})
-            continue
-        reason = shim.pointer_text_reason((project_dir / c["path"]).read_text(encoding="utf-8"), c["path"])
-        if reason:
-            left_in_place.append({"path": c["path"], "type": "instructions", "reason": reason})
         else:
             pointers.append(c)
     resources, left = adopt.plan(project_dir)

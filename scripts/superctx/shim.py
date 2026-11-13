@@ -136,6 +136,25 @@ def pointer_text_reason(content: str, rel_path: str) -> str | None:
     return None
 
 
+def pointer_text_file(project_dir: Path, rel_path: str) -> tuple[str, str] | None:
+    """(reason, target) when the file at rel_path holds pointer text, else None.
+
+    Follows links only to a regular file inside the repository, and judges the content
+    against that target's own path, as add does; target is that path. A link leaving
+    the repository is never opened. Read-only.
+    """
+    root = Path(project_dir).resolve()
+    try:
+        target = (root / rel_path).resolve()
+        target_rel = target.relative_to(root).as_posix()
+        if not target.is_file():
+            return None
+        reason = pointer_text_reason(target.read_text(encoding="utf-8"), target_rel)
+    except (OSError, ValueError, RuntimeError, UnicodeDecodeError):  # unreadable, outside, or a loop
+        return None
+    return (reason, target_rel) if reason else None
+
+
 def is_generated_pointer_file(project_dir: Path, rel_path: str, backup_required: bool = True) -> bool:
     path = Path(project_dir) / rel_path
     if not path.is_file():
