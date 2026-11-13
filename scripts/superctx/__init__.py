@@ -5,4 +5,4 @@ The visible agent-facing skills wrap this package through `superctx sync` and
 modules for orchestration, hooks, and tests, but not as public CLI commands.
 """
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
