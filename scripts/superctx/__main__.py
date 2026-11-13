@@ -26,7 +26,15 @@ REASONS = {
         "its [[natives]] entry from .ctx/superctx.toml, and delete its ## From: <path> section from "
         ".ctx/SUPERCTX.md"
     ),
-    "canonical_missing": "its canonical copy in .ctx/ is missing; restore it from version control or .ctx/sources/",
+    "already_a_pointer": (
+        "it already holds a generated SuperCtx pointer, so SuperCtx cannot tell what it held before "
+        "or whether a backup of that exists; it changed nothing"
+    ),
+    "pointer_with_changes": (
+        "it holds SuperCtx pointer text with changes, so SuperCtx cannot tell which parts are original; "
+        "it changed nothing"
+    ),
+    "canonical_missing":"its canonical copy in .ctx/ is missing; restore it from version control or .ctx/sources/",
     "not_verified": "SuperCtx has not verified this tool's behavior through a link",
     "already_a_symlink": "it is already a symlink you manage",
     "contains_symlink": "it contains symlinks, which could break after moving it",
@@ -58,7 +66,10 @@ def _print_left_in_place(result: dict) -> None:
 
 def _print_init_result(result: dict, project_dir: Path) -> None:
     if not result["created"]:
-        if result.get("partially_migrated"):
+        if result.get("reason") == "nothing_adoptable":
+            print("SuperCtx did not set up this repo: no instruction file could be adopted safely.")
+            _print_left_in_place(result)
+        elif result.get("partially_migrated"):
             print("SuperCtx: This project is partially migrated.")
             if result.get("manifest_error"):
                 print(f"Error parsing manifest: {result['manifest_error']}")

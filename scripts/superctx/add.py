@@ -129,26 +129,20 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
                 f"Only known standard files (like GEMINI.md, .claude/CLAUDE.md) can be created as new shims."
             )
         original_content = ""
-        is_live_shim = False
     else:
-        live_content = resolved_file_path.read_text(encoding="utf-8")
-        is_live_shim = shim.is_any_generated_pointer(live_content, rel_path_str)
+        original_content = resolved_file_path.read_text(encoding="utf-8")
+        reason = shim.pointer_text_reason(original_content, rel_path_str)
+        if reason:
+            raise AddError(
+                f"Cannot add {rel_path_str}: {reason}. It holds SuperCtx pointer text, so SuperCtx cannot "
+                "tell what the file held before or whether a backup of that exists; it changed nothing"
+            )
 
-        if not is_live_shim and backup_file.is_file():
+        if backup_file.is_file():
             raise AddError(
                 f"A backup already exists at {backup_file.relative_to(project_dir)}. "
                 f"Please inspect the conflict between the backup file and your local version before connecting it."
             )
-
-        # 5. Read original content
-        if is_live_shim:
-            # Read from backup if it exists, otherwise empty
-            if backup_file.is_file():
-                original_content = backup_file.read_text(encoding="utf-8")
-            else:
-                original_content = ""
-        else:
-            original_content = live_content
 
     # 6. Lookup known convention
     conv = registry.lookup_known_convention(rel_path_str)
@@ -238,8 +232,9 @@ def run(project_dir: Path, input_path: str, create_if_missing: bool = False) -> 
             f"Agents read the hub through their shims automatically."
         )
     else:
+        backed_up = "Original content backed up, incorporated" if apply_res["backed_up"] else "Incorporated"
         msg = (
-            f"Added {rel_path_str}. Original content backed up, incorporated into "
+            f"Added {rel_path_str}. {backed_up} into "
             f".ctx/{core.HUB_NAME}, and replaced with a generated shim. "
             f"Agents read the hub through their shims automatically."
         )

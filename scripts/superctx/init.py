@@ -75,15 +75,32 @@ def run(project_dir: Path) -> dict:
     left_in_place = []
     pointers = []
     for c in discovery["verified_instruction_file"]:
-        if shim._is_safe_target(project_dir, c["path"]):
-            pointers.append(c)
-        else:
+        if not shim._is_safe_target(project_dir, c["path"]):
             left_in_place.append({"path": c["path"], "type": "instructions", "reason": "unsafe_path"})
+            continue
+        reason = shim.pointer_text_reason((project_dir / c["path"]).read_text(encoding="utf-8"), c["path"])
+        if reason:
+            left_in_place.append({"path": c["path"], "type": "instructions", "reason": reason})
+        else:
+            pointers.append(c)
     resources, left = adopt.plan(project_dir)
     left_in_place += left
     if resources and not adopt.links_supported(project_dir):
         left_in_place += [{"path": c["path"], "type": c["type"], "reason": "links_unsupported"} for c in resources]
         resources = []
+    refused = any(item["reason"] in ("already_a_pointer", "pointer_with_changes") for item in left_in_place)
+    if refused and not pointers and not resources:
+        # Every instruction file was refused, so setting up would only create an empty hub.
+        return {
+            "created": False,
+            "reason": "nothing_adoptable",
+            "ctx_dir": str(cdir),
+            "connected": [],
+            "detected": [],
+            "left_in_place": left_in_place,
+            "hub": f"{core.CTX_DIRNAME}/{core.HUB_NAME}",
+            "untracked": untracked,
+        }
 
     # 2. Build the whole .ctx/ (backups, hub, manifest) in a staging directory and
     #    install it with one rename, so a failure here leaves the repository untouched.

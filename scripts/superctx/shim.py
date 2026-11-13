@@ -120,6 +120,22 @@ def is_any_generated_pointer(content: str, rel_path: str) -> bool:
     return is_generated_pointer(content, rel_path, True) or is_generated_pointer(content, rel_path, False)
 
 
+def pointer_text_reason(content: str, rel_path: str) -> str | None:
+    """Why content that is about to be adopted as an original must not be, or None.
+
+    Pointer text says nothing about what the file held before or whether a backup of
+    that exists, so it is never treated as original content: an exact generated pointer
+    is "already_a_pointer", and anything else carrying the generated marker is
+    "pointer_with_changes". The marker alone decides, unlike is_shim(), so a pointer cut
+    off before its hub reference is still caught.
+    """
+    if is_any_generated_pointer(content, rel_path):
+        return "already_a_pointer"
+    if WARNING_MARKER in content.replace("\r\n", "\n"):
+        return "pointer_with_changes"
+    return None
+
+
 def is_generated_pointer_file(project_dir: Path, rel_path: str, backup_required: bool = True) -> bool:
     path = Path(project_dir) / rel_path
     if not path.is_file():
