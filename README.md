@@ -35,7 +35,7 @@ Which tools and versions were tested, and what v0.2 leaves alone (commands, suba
 
 ## Install
 
-Install SuperCtx directly from GitHub in Claude Code:
+SuperCtx is available now from its GitHub marketplace. Install it in Claude Code:
 
 ```text
 /plugin marketplace add MrShininnnnn/SuperCtx
@@ -43,8 +43,6 @@ Install SuperCtx directly from GitHub in Claude Code:
 ```
 
 After installing or updating, restart Claude Code if the SuperCtx commands do not appear immediately.
-
-Marketplace installation is planned for a future release.
 
 ## Use
 

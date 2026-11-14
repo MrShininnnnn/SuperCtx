@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- README: the Install section now says SuperCtx is available from its GitHub marketplace and no longer calls marketplace installation a future release. The install commands are unchanged.
+
 ## [0.2.6] - 2026-11-13
 
 ### Fixed
