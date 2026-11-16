@@ -8,7 +8,9 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-24.04 provides every Python in the 3.9-3.12 matrix below;
+    # ubuntu-latest moved to 26.04, which has no Python 3.9 build for setup-python.
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
