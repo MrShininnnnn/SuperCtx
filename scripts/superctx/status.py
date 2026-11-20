@@ -371,6 +371,7 @@ def detect_repo_state(project_dir: Path) -> dict:
                 "recommended_action_mutates_files": False
             }
 
+        missing_backups = []
         for entry in files:
             rel = entry["path"]
             live = project_dir / rel
@@ -391,6 +392,7 @@ def detect_repo_state(project_dir: Path) -> dict:
 
             if backup_required and not backup.is_file():
                 reasons.append("missing_backup")
+                missing_backups.append(rel)
 
         adopted: set[str] = set()
         try:
@@ -433,7 +435,9 @@ def detect_repo_state(project_dir: Path) -> dict:
         if untracked:
             reasons.append("untracked_candidates_found")
 
-        critical_reasons = [r for r in reasons if r != "untracked_candidates_found"]
+        # A missing backup is reported but is not shim damage: the pointers may be intact,
+        # and sync cannot recreate it, so it never calls for repair on its own.
+        critical_reasons = [r for r in reasons if r not in ("untracked_candidates_found", "missing_backup")]
 
         if critical_reasons:
             state = "managed_needs_repair"
@@ -449,6 +453,8 @@ def detect_repo_state(project_dir: Path) -> dict:
             "recommended_action": rec_action,
             "recommended_action_mutates_files": (rec_action != "none")
         }
+        if missing_backups:  # named so every surface can list them
+            result["missing_backups"] = sorted(missing_backups)
         if adopted:  # named so the session-start hook can list them
             result["adopted_tool_config"] = sorted(adopted)
         if left_in_place:  # pointer text: never offered for connection

@@ -139,6 +139,16 @@ def _print_init_result(result: dict, project_dir: Path) -> None:
         print()
 
 
+def _print_warnings(warnings: list[dict]) -> None:
+    print("Warnings:")
+    for warning in warnings:
+        if warning["reason"] == "missing_backup":
+            print(f"  ! Backup missing for {warning['path']}; original content cannot be recovered.")
+        else:
+            print(f"  ! {warning['path']}: {warning['reason']}")
+    print()
+
+
 def _cmd_sync(project_dir: Path) -> int:
     try:
         result = sync_cmd.run(project_dir)
@@ -159,6 +169,9 @@ def _cmd_sync(project_dir: Path) -> int:
 
     elif mode == "healthy":
         print("All SuperCtx context links are healthy.")
+        if result.get("warnings"):
+            print()
+            _print_warnings(result["warnings"])
         _print_left_in_place(result)
         candidates = result.get("candidates", [])
         if candidates:
@@ -198,13 +211,7 @@ def _cmd_sync(project_dir: Path) -> int:
             print()
 
         if result["warnings"]:
-            print("Warnings:")
-            for warning in result["warnings"]:
-                if warning["reason"] == "missing_backup":
-                    print(f"  ! Backup missing for {warning['path']}; original content cannot be recovered.")
-                else:
-                    print(f"  ! {warning['path']}: {warning['reason']}")
-            print()
+            _print_warnings(result["warnings"])
 
         _print_left_in_place(result)
 

@@ -209,7 +209,7 @@ def _run(project_dir: Path) -> dict:
         healthy_shims = [entry["path"] for entry in manifest.get("files", []) + manifest.get("links", [])]
         candidates = state_info.get("candidates", [])
         converged = _converge_policy(project_dir, manifest)
-        return {
+        result = {
             "mode": "healthy",
             "state": "managed_healthy",
             "final_state": "healthy",
@@ -219,6 +219,9 @@ def _run(project_dir: Path) -> dict:
             "instructions_left_in_place": state_info.get("left_in_place", []),
             "message": "All SuperCtx context links are healthy."
         }
+        if state_info.get("missing_backups"):  # reported, never repaired
+            result["warnings"] = [{"path": rel, "reason": "missing_backup"} for rel in state_info["missing_backups"]]
+        return result
 
     elif state == "managed_needs_repair" and rec_action == "repair":
         try:
@@ -281,7 +284,10 @@ def _run(project_dir: Path) -> dict:
         converged = _converge_policy(project_dir, manifest, tool_config)
 
         final_state = "needs_attention" if unresolved else "healthy"
-        msg = "SuperCtx shims repair complete with some unresolved issues." if unresolved else "SuperCtx shims repaired."
+        if repaired:
+            msg = "SuperCtx shims repair complete with some unresolved issues." if unresolved else "SuperCtx shims repaired."
+        else:
+            msg = "SuperCtx found unresolved issues; nothing was repaired." if unresolved else "No SuperCtx shims needed repair."
         return {
             "mode": "repair",
             "state": "managed_needs_repair",

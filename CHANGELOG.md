@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- A missing backup under `.ctx/sources/` is no longer reported as shim damage. Before, missing backups alone made state detection report `managed_needs_repair`, SessionStart and the edit guard say the shims were broken or missing and offer a repair, and sync say "SuperCtx shims repaired." although it repaired nothing. Now the repository counts as healthy when the pointers are intact: SessionStart names every file whose backup is missing, the guard steers edits of intact pointers to `.ctx/SUPERCTX.md`, and sync keeps the `Backup missing` warning on its healthy path and repairs nothing. State detection lists the files in a new `missing_backups` field. When repair finds nothing to repair, sync no longer says it repaired shims. Real pointer or link damage keeps its repair handling, and missing backups never cause writes; sync does not recreate them.
+
 ### Changed
 - README: the Install section now says SuperCtx is available from its GitHub marketplace and no longer calls marketplace installation a future release. The install commands are unchanged.
 
