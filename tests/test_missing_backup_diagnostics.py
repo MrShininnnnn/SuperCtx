@@ -21,7 +21,8 @@ POINTERS = ["CLAUDE.md", "AGENTS.md", "GEMINI.md", ".codex/AGENTS.md", ".github/
 BROKEN = "broken or missing"
 REPAIR_OFFER = "Proceed with repair?"
 REDIRECT = "is a generated SuperCtx shim, so I will update `.ctx/SUPERCTX.md` instead"
-BACKUP_WARNING = "Backup missing for {}; original content cannot be recovered."
+BACKUP_WARNING = "Backup missing for {}; sync cannot recreate the expected original backup."
+OLD_CLAIM = "original content cannot be recovered"
 
 
 def managed(tmp_path, missing=POINTERS):
@@ -79,7 +80,7 @@ def test_sync_keeps_the_warnings_reports_no_repair_and_writes_nothing(tmp_path, 
     assert result["warnings"] == [{"path": rel, "reason": "missing_backup"} for rel in sorted(POINTERS)]
     assert "repaired" not in result["message"]
     code, out = run_cli(capsys, project)
-    assert code == 0 and "repaired" not in out.lower()
+    assert code == 0 and "repaired" not in out.lower() and OLD_CLAIM not in out
     for rel in POINTERS:
         assert BACKUP_WARNING.format(rel) in out
     assert snapshot(project) == before
@@ -138,11 +139,12 @@ def test_with_adopted_tool_config(tmp_path, monkeypatch, capsys):
     assert result["repaired"] == [] and result["message"] == "SuperCtx found unresolved issues; nothing was repaired."
     code, out = run_cli(capsys, project)
     assert code == 1 and BACKUP_WARNING.format("AGENTS.md") in out and "Repaired" not in out
+    assert OLD_CLAIM not in out
     assert snapshot(project) == before
 
 
 @pytest.mark.parametrize("damage", ["missing_pointer", "edited_pointer", "missing_link"])
-def test_with_real_damage_keeps_the_repair_handling(tmp_path, damage):
+def test_with_real_damage_keeps_the_repair_handling(tmp_path, damage, capsys):
     project = managed(tmp_path, missing=["AGENTS.md"])
     if damage == "missing_pointer":
         os.unlink(project / "CLAUDE.md")
@@ -157,6 +159,21 @@ def test_with_real_damage_keeps_the_repair_handling(tmp_path, damage):
     assert BROKEN in out and "- AGENTS.md\n" in out
     code, msg = guard_edit(project, "AGENTS.md")
     assert code == 2 and REPAIR_OFFER in msg
+    before = snapshot(project)
+    code, out = run_cli(capsys, project)  # repair mode, through the CLI renderer
+    assert code == (1 if damage == "edited_pointer" else 0)
+    assert BACKUP_WARNING.format("AGENTS.md") in out and OLD_CLAIM not in out
+    after = snapshot(project)
+    repaired_path = {"missing_pointer": "CLAUDE.md", "edited_pointer": None, "missing_link": ".claude/rules/python.md"}[damage]
+    changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    if repaired_path:  # only the repaired native (and the folder it is written into) changes
+        assert repaired_path in changed and changed <= {repaired_path, os.path.dirname(repaired_path)}
+    else:
+        assert changed == set()
+    damage_again = {"missing_pointer": lambda: os.unlink(project / "CLAUDE.md"),
+                    "edited_pointer": lambda: None,
+                    "missing_link": lambda: os.unlink(project / ".claude/rules/python.md")}[damage]
+    damage_again()
     result = sync_cmd.run(project)
     assert {"path": "AGENTS.md", "reason": "missing_backup"} in result["warnings"]
     assert not (core.sources_dir(project) / "AGENTS.md").exists()

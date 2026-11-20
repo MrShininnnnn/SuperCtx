@@ -143,7 +143,7 @@ def _print_warnings(warnings: list[dict]) -> None:
     print("Warnings:")
     for warning in warnings:
         if warning["reason"] == "missing_backup":
-            print(f"  ! Backup missing for {warning['path']}; original content cannot be recovered.")
+            print(f"  ! Backup missing for {warning['path']}; sync cannot recreate the expected original backup.")
         else:
             print(f"  ! {warning['path']}: {warning['reason']}")
     print()
